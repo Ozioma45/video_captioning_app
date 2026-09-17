@@ -20,6 +20,9 @@
 # production
 /build
 
+# Caption Studio: local video/temp storage — never committed (ARCHITECTURE.md §11)
+/storage
+
 # misc
 .DS_Store
 *.pem

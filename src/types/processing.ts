@@ -11,6 +11,7 @@
 export type ProcessingStage =
   | "idle"
   | "uploading"
+  | "processing_metadata"
   | "extracting_audio"
   | "transcribing"
   | "processing_captions"

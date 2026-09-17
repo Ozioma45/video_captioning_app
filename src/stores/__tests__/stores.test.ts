@@ -69,4 +69,48 @@ describe("store actions", () => {
     expect(state.transcription.stage).toBe("idle");
     useProcessingStore.getState().resetAll();
   });
+
+  it("useProcessingStore supports the processing_metadata stage with no fake percentage (Phase 2)", () => {
+    useProcessingStore.getState().setState("upload", {
+      stage: "processing_metadata",
+      progressPercent: null,
+      startedAt: new Date().toISOString(),
+      error: null,
+    });
+    expect(useProcessingStore.getState().upload.stage).toBe("processing_metadata");
+    expect(useProcessingStore.getState().upload.progressPercent).toBeNull();
+    useProcessingStore.getState().resetAll();
+  });
+
+  it("usePlaybackStore mirrors real playback values and resets cleanly (Phase 2)", () => {
+    usePlaybackStore.getState().setDuration(3600);
+    usePlaybackStore.getState().setCurrentTime(120);
+    usePlaybackStore.getState().setIsPlaying(true);
+    usePlaybackStore.getState().setVolume(0.5);
+    usePlaybackStore.getState().setIsMuted(true);
+
+    const state = usePlaybackStore.getState();
+    expect(state.durationSeconds).toBe(3600);
+    expect(state.currentTime).toBe(120);
+    expect(state.isPlaying).toBe(true);
+    expect(state.volume).toBe(0.5);
+    expect(state.isMuted).toBe(true);
+
+    usePlaybackStore.getState().reset();
+    expect(usePlaybackStore.getState().currentTime).toBe(0);
+    expect(usePlaybackStore.getState().isPlaying).toBe(false);
+  });
+
+  it("useProjectStore.setVideo stores the uploaded video and reset clears it (Phase 2)", () => {
+    useProjectStore.getState().setVideo({
+      id: "11111111-1111-4111-8111-111111111111",
+      source: { kind: "server-path", videoId: "11111111-1111-4111-8111-111111111111" },
+      metadata: null,
+      uploadedAt: new Date().toISOString(),
+    });
+    expect(useProjectStore.getState().video?.id).toBe("11111111-1111-4111-8111-111111111111");
+
+    useProjectStore.getState().reset();
+    expect(useProjectStore.getState().video).toBeNull();
+  });
 });

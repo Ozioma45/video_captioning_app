@@ -23,6 +23,8 @@ export interface VideoMetadata {
   videoCodec: string | null;
   hasAudio: boolean;
   audioCodec: string | null;
+  /** ffprobe's format_name (e.g. "mov,mp4,m4a,3gp,3g2,mj2"); added in Phase 2. */
+  containerFormat: string | null;
 }
 
 export interface Video {

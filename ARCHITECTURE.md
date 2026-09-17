@@ -449,3 +449,16 @@ These recur throughout the document and are restated here because they constrain
 - Styles are configuration, never components; adding a style must never require touching the renderer.
 - Nothing about video bytes ever sits in React/Zustand state or gets JSON-serialized into a job payload — only paths/ids.
 - Every subprocess call uses argument arrays, never shell string interpolation.
+
+---
+
+## 20. Phase 2 Implementation Notes
+
+Four decisions made while building Video Input that refine (never contradict) the Phase 0/1 architecture:
+
+1. **ffprobe via `@ffprobe-installer/ffprobe`, not an assumed system install.** The dev machine had no system FFmpeg/ffprobe. Rather than requiring every contributor to install FFmpeg system-wide (an environment change outside the project), `@ffprobe-installer/ffprobe` ships a real, pinned ffprobe binary as an ordinary npm dependency (same pattern as `esbuild`/`swc`: a per-platform optional-dependency package, no postinstall network fetch). `npm install` alone now gives a working ffprobe on any supported platform — closer to the "free-first, low-friction dev setup" goal than assuming a system package. `FfmpegVideoProcessor` still invokes it via `execFile` with an argument array exactly as ARCHITECTURE.md §14 requires.
+2. **Upload is a raw streamed request body, not multipart/form-data.** Next.js Route Handlers buffer the entire body in memory when you call `request.formData()`; reading `request.body` directly as a stream and piping it to disk does not. For a file that can legitimately be 2GB, this is not a style preference — multipart parsing would contradict "never buffer the whole file in memory" (§12). The client sends the file as a raw XHR body (for real upload-progress events) with the original filename in an `X-Filename` header instead of a form field.
+3. **`StorageProvider` gained `createReadStream(key, range?)`.** Documented in `services/storage/StorageService.ts` and summarized in §11: `read()` returning a whole `Buffer` cannot serve a multi-GB file's HTTP Range requests (required for native `<video>` seeking) without either buffering the whole file or giving up seek support. The addition generalizes to future cloud providers, all of which support ranged GETs.
+4. **Two Phase 1 types grew one field each, additively:** `VideoMetadata.containerFormat` (ffprobe's `format_name`, needed to pick a correct streaming `Content-Type`) and `ProcessingStage` gained `"processing_metadata"` (the gap between "bytes fully uploaded" and "ffprobe has finished" needs its own honest, non-percentage stage — see PROJECT.md §38). Both are additive; nothing that read these types in Phase 1 breaks.
+
+Preview strategy clarification: the player streams from `GET /api/videos/[videoId]/stream` (Range-aware, backed by `createReadStream`) rather than a client-side object URL. This was chosen over the "instant local preview while uploading" idea floated in §4/§12 — that remains a valid future enhancement, not implemented here — because it avoids running two different preview code paths (blob-before-upload vs. server-after-upload) for a first cut, and it satisfies the Phase 2 brief's literal requirement ("after successful upload and validation, display a real preview") with less code.
