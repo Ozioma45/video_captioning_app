@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens (DESIGN_SYSTEM.md §2-5): dark-by-default, one deliberate
+ * accent, semantic status colors kept separate from the accent, a single
+ * moderate radius scale. No light theme / toggle in V1 — see
+ * DESIGN_SYSTEM.md §3. Names follow shadcn/ui's standard variable
+ * contract so `npx shadcn add <component>` keeps working without
+ * remapping later.
+ */
+:root {
+  --background: #0b0b0d;
+  --foreground: #f2f2f3;
+
+  --card: #131316;
+  --card-foreground: #f2f2f3;
+
+  --popover: #131316;
+  --popover-foreground: #f2f2f3;
+
+  --primary: #7c6cf6;
+  --primary-foreground: #ffffff;
+
+  --secondary: #1b1b20;
+  --secondary-foreground: #f2f2f3;
+
+  --muted: #1b1b20;
+  --muted-foreground: #9a9aa2;
+
+  --accent: #1b1b20;
+  --accent-foreground: #f2f2f3;
+
+  --destructive: #f87171;
+  --destructive-foreground: #ffffff;
+
+  --success: #34d399;
+  --warning: #fbbf24;
+  --info: #60a5fa;
+
+  --border: #2a2a31;
+  --input: #2a2a31;
+  --ring: #7c6cf6;
+
+  --radius: 0.625rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+}
