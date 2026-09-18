@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "class-variance-authority": "^0.7",
     "clsx": "^2",

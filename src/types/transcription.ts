@@ -9,11 +9,25 @@
  * adapter; the rest of the application never imports this file directly.
  */
 
+/** A provider-agnostic handle for terminating an in-flight transcription. */
+export interface CancellableProcessHandle {
+  cancel: () => void;
+}
+
 export interface TranscriptionInput {
   /** Path to a local audio file (extracted from the source video). */
   audioFilePath: string;
   /** BCP-47 language hint, if known. Omit to let the provider auto-detect. */
   language?: string;
+  /**
+   * Called once the provider has a real, killable process running, so a
+   * caller can keep the handle for a future cancellation feature without
+   * this interface needing to change again (Phase 3 brief §14: the
+   * subprocess must eventually be terminable, even though no cancel UI
+   * exists yet). Optional — a non-process-based future provider (a cloud
+   * API) simply never calls it.
+   */
+  onProcessStart?: (handle: CancellableProcessHandle) => void;
 }
 
 export interface TranscriptionWord {

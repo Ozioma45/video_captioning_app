@@ -1,14 +1,16 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 
 import ffprobeInstaller from "@ffprobe-installer/ffprobe";
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 
 import type { VideoMetadata } from "@/types";
-import type { VideoProcessor } from "./VideoProcessingService";
+import type { ExtractAudioOptions, VideoProcessor } from "./VideoProcessingService";
 import { parseFfprobeOutput, type FfprobeOutput } from "./parseFfprobeOutput";
-import { classifyFfprobeExecError, UnreadableVideoError } from "./errors";
+import { computeProgressPercent, extractLatestOutTimeSeconds } from "./parseFfmpegProgress";
+import { classifyFfmpegExecError, classifyFfprobeExecError, UnreadableVideoError } from "./errors";
 
 const execFileAsync = promisify(execFile);
 
@@ -16,6 +18,12 @@ const FFPROBE_TIMEOUT_MS = 30_000;
 // ffprobe reads container/stream headers, not full frames — its JSON
 // output stays small even for a multi-hour file, but we cap generously.
 const FFPROBE_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+
+// Audio extraction only demuxes/resamples the audio stream (no video
+// decoding, per ARCHITECTURE.md §5) — even a 2-hour source finishes in
+// well under a minute in practice. This ceiling is generous headroom
+// against a hang, not an expected duration.
+const FFMPEG_EXTRACT_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * `VideoProcessor` implementation backed by ffprobe/FFmpeg
@@ -74,8 +82,92 @@ export class FfmpegVideoProcessor implements VideoProcessor {
     }
   }
 
-  async extractAudio(): Promise<void> {
-    throw new Error("extractAudio is not implemented until Phase 3 (transcription)");
+  /**
+   * Extracts a 16kHz mono PCM WAV — whisper.cpp's required input format
+   * (verified directly against the installed ffmpeg build: `-ar 16000 -ac
+   * 1 -f wav`). `-vn` skips video decoding entirely, so this stays fast
+   * and cheap regardless of source resolution/length (ARCHITECTURE.md
+   * §5, §12 — never re-encode video for a step that doesn't need it).
+   *
+   * Uses `spawn` directly (not the promisified `execFile` used
+   * elsewhere) so we can stream `-progress pipe:1` output as it arrives
+   * for real, honest progress (PROJECT.md §38) — never a fabricated
+   * percentage — while still cleanly killing the process on timeout.
+   */
+  async extractAudio(videoFilePath: string, outputAudioPath: string, options: ExtractAudioOptions): Promise<void> {
+    const args = [
+      "-y",
+      "-i",
+      videoFilePath,
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-f",
+      "wav",
+      "-progress",
+      "pipe:1",
+      "-nostats",
+      outputAudioPath,
+    ];
+
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(ffmpegInstaller.path, args);
+      let stdoutBuffer = "";
+      let stderrBuffer = "";
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        child.kill("SIGKILL");
+        settle(new Error("ffmpeg audio extraction timed out"));
+      }, FFMPEG_EXTRACT_TIMEOUT_MS);
+
+      function settle(error: Error | null) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve();
+      }
+
+      child.stdout.on("data", (chunk: Buffer) => {
+        stdoutBuffer += chunk.toString("utf-8");
+        const elapsed = extractLatestOutTimeSeconds(stdoutBuffer);
+        if (elapsed !== null) {
+          options.onProgress?.(computeProgressPercent(elapsed, options.durationSeconds));
+        }
+      });
+
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderrBuffer += chunk.toString("utf-8");
+        if (stderrBuffer.length > 4000) stderrBuffer = stderrBuffer.slice(-4000);
+      });
+
+      child.on("error", (error) => settle(error));
+
+      child.on("close", (code) => {
+        if (code === 0) {
+          settle(null);
+          return;
+        }
+        const error = Object.assign(new Error(`ffmpeg exited with code ${code}`), {
+          code: code ?? undefined,
+          stderr: stderrBuffer,
+        });
+        settle(error);
+      });
+    }).catch((error: unknown) => {
+      const classified = classifyFfmpegExecError(error);
+      const nodeError = error as NodeJS.ErrnoException & { stderr?: string };
+      console.error(
+        `[ffmpeg] ${classified.name} while extracting audio from ${videoFilePath}:`,
+        `code=${nodeError.code ?? "unknown"}`,
+        nodeError.stderr ? `stderr=${nodeError.stderr.slice(0, 500)}` : `message=${nodeError.message}`,
+      );
+      throw classified;
+    });
   }
 
   async render(): Promise<void> {

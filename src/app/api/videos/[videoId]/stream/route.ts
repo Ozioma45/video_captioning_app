@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { isValidVideoId } from "@/lib/videoId";
+import { isValidId } from "@/lib/id";
 import { storageProvider } from "@/services/storage/LocalFilesystemStorage";
 import { loadVideoRecord } from "@/services/videos/videoRecordStore";
 
@@ -29,7 +29,7 @@ function parseRange(rangeHeader: string | null, totalSize: number): { start: num
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ videoId: string }> }) {
   const { videoId } = await params;
-  if (!isValidVideoId(videoId)) {
+  if (!isValidId(videoId)) {
     return new Response(null, { status: 404 });
   }
 

@@ -3,6 +3,7 @@
 import { VideoMetadataPanel } from "@/components/video-player/VideoMetadataPanel";
 import { VideoPlayer } from "@/components/video-player/VideoPlayer";
 import { UploadDropzone } from "@/features/upload/UploadDropzone";
+import { TranscriptionPanel } from "@/features/transcription/TranscriptionPanel";
 import { useProjectStore } from "@/stores";
 
 export default function Home() {
@@ -25,8 +26,9 @@ export default function Home() {
       <div className="flex-1">
         <VideoPlayer key={video.id} videoId={video.id} />
       </div>
-      <div className="w-full shrink-0 md:w-72">
+      <div className="flex w-full shrink-0 flex-col gap-4 md:w-72">
         <VideoMetadataPanel video={video} />
+        <TranscriptionPanel video={video} />
       </div>
     </div>
   );

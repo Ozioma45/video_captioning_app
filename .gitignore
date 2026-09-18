@@ -23,6 +23,10 @@
 # Caption Studio: local video/temp storage — never committed (ARCHITECTURE.md §11)
 /storage
 
+# Caption Studio: local whisper.cpp binary/model, if placed inside the repo
+# (see .env.example) — never committed (multi-hundred-MB+ model files).
+/whisper
+
 # misc
 .DS_Store
 *.pem
@@ -35,6 +39,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel

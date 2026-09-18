@@ -113,4 +113,46 @@ describe("store actions", () => {
     useProjectStore.getState().reset();
     expect(useProjectStore.getState().video).toBeNull();
   });
+
+  it("useProcessingStore walks the real transcription stage sequence (Phase 3)", () => {
+    const startedAt = new Date().toISOString();
+    const setState = useProcessingStore.getState().setState;
+
+    setState("transcription", { stage: "extracting_audio", progressPercent: 0, startedAt, error: null });
+    expect(useProcessingStore.getState().transcription.stage).toBe("extracting_audio");
+
+    setState("transcription", { stage: "extracting_audio", progressPercent: 63, startedAt, error: null });
+    expect(useProcessingStore.getState().transcription.progressPercent).toBe(63);
+
+    // No live progress signal for this stage — indeterminate, not faked.
+    setState("transcription", { stage: "transcribing", progressPercent: null, startedAt, error: null });
+    expect(useProcessingStore.getState().transcription.stage).toBe("transcribing");
+    expect(useProcessingStore.getState().transcription.progressPercent).toBeNull();
+
+    setState("transcription", { stage: "processing_captions", progressPercent: null, startedAt, error: null });
+    expect(useProcessingStore.getState().transcription.stage).toBe("processing_captions");
+
+    setState("transcription", { stage: "completed", progressPercent: 100, startedAt, error: null });
+    expect(useProcessingStore.getState().transcription.stage).toBe("completed");
+    expect(useProcessingStore.getState().upload.stage).toBe("idle"); // unaffected by the other kind
+
+    useProcessingStore.getState().resetAll();
+  });
+
+  it("useProcessingStore surfaces a failed transcription with its error intact (Phase 3)", () => {
+    const startedAt = new Date().toISOString();
+    useProcessingStore.getState().setState("transcription", {
+      stage: "failed",
+      progressPercent: null,
+      startedAt,
+      error: { message: "Local transcription isn't set up yet.", projectSafe: true },
+    });
+
+    const state = useProcessingStore.getState().transcription;
+    expect(state.stage).toBe("failed");
+    expect(state.error?.projectSafe).toBe(true);
+    expect(state.error?.message).toMatch(/isn't set up/);
+
+    useProcessingStore.getState().resetAll();
+  });
 });
