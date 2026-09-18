@@ -68,6 +68,13 @@ export async function POST(request: NextRequest) {
       );
     }
     if (error instanceof UnreadableVideoError) {
+      // Not console.error: an ordinary user uploading a genuinely bad file
+      // is expected traffic, not a server fault. Still logged (not
+      // silent) because "why did ffprobe reject this" is exactly the
+      // question that was previously unanswerable — see
+      // classifyFfprobeExecError's doc comment for the incident this
+      // traces back to.
+      console.warn("[upload] rejected as invalid video", { videoId, cause: error.cause ?? error.message });
       return errorResponse(422, "invalid_video", "This file doesn't appear to be a valid, readable video.");
     }
     console.error("[upload] unexpected metadata extraction failure", error);

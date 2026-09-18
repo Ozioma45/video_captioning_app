@@ -39,6 +39,7 @@ These rules are permanent and apply to all future work on this project, across a
 
 - **Test real video files**, not only mocked data — short video, long video, landscape, vertical, no-audio, poor-audio, multi-speaker, and a large file, per `PROJECT.md` Rule 7.
 - After each major subsystem: run tests, verify the implementation manually, check for regressions in adjacent features, and report what changed and what remains — don't silently bundle unrelated changes into the same piece of work.
+- **Restart the dev server after any `npm install`/`npm uninstall`**, especially for native-binary-backed packages (ffprobe, future FFmpeg/Whisper bindings). A long-running `next dev` process can end up with a stale resolved path to a native binary after `node_modules` changes underneath it, and every exec failure that isn't a plain "binary not found" was silently misreported as "invalid video" until a 2026-09-17 debugging session fixed the error classification — see `classifyFfprobeExecError` in `services/video-processing/errors.ts`. If a processing step that worked before starts failing for no code reason, restart the dev server before debugging further.
 
 ## Documentation
 

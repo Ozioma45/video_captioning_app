@@ -8,7 +8,7 @@ import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import type { VideoMetadata } from "@/types";
 import type { VideoProcessor } from "./VideoProcessingService";
 import { parseFfprobeOutput, type FfprobeOutput } from "./parseFfprobeOutput";
-import { FfprobeUnavailableError, UnreadableVideoError } from "./errors";
+import { classifyFfprobeExecError, UnreadableVideoError } from "./errors";
 
 const execFileAsync = promisify(execFile);
 
@@ -53,16 +53,23 @@ export class FfmpegVideoProcessor implements VideoProcessor {
       });
       stdout = result.stdout;
     } catch (error) {
-      const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === "ENOENT") {
-        throw new FfprobeUnavailableError(error);
-      }
-      throw new UnreadableVideoError("ffprobe could not read this file", error);
+      const classified = classifyFfprobeExecError(error);
+      const nodeError = error as NodeJS.ErrnoException & { stderr?: string };
+      // Always logged, regardless of which way this classifies — silence
+      // here is what let a tooling failure masquerade as "invalid video"
+      // undetected. See classifyFfprobeExecError's doc comment.
+      console.error(
+        `[ffprobe] ${classified.name} while probing ${videoFilePath}:`,
+        `code=${nodeError.code ?? "unknown"}`,
+        nodeError.stderr ? `stderr=${nodeError.stderr.slice(0, 500)}` : `message=${nodeError.message}`,
+      );
+      throw classified;
     }
 
     try {
       return JSON.parse(stdout) as FfprobeOutput;
     } catch (error) {
+      console.error(`[ffprobe] returned unparsable output while probing ${videoFilePath}:`, stdout.slice(0, 500));
       throw new UnreadableVideoError("ffprobe returned unparsable output", error);
     }
   }
