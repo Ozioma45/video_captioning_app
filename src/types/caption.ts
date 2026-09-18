@@ -28,6 +28,16 @@ export interface CaptionSegment {
   /** Current (possibly edited) display text for this segment. */
   text: string;
   words: CaptionWord[];
+  /**
+   * True once `text` has been manually edited (Phase 4) in a way that may
+   * no longer correspond word-for-word to `words`. `words` is never
+   * cleared or rewritten when this happens — the last-known timing is
+   * still preserved, just flagged as unreliable for word-level sync
+   * (karaoke/highlight styles, word-accurate seeking) rather than
+   * fabricating new per-word timestamps. See
+   * `domain/caption-engine/captionMutations.ts`.
+   */
+  wordsStale?: boolean;
 }
 
 export interface SegmentationRules {
@@ -37,6 +47,11 @@ export interface SegmentationRules {
   minSegmentDurationSeconds: number;
   maxSegmentDurationSeconds: number;
   breakOnPunctuation: boolean;
+  /**
+   * A gap between two consecutive words' timestamps larger than this is
+   * treated as a natural pause — a preferred segment boundary (Phase 4).
+   */
+  pauseThresholdSeconds: number;
 }
 
 export interface CaptionDocument {

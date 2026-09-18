@@ -2,6 +2,7 @@ import { generateId } from "@/lib/id";
 import type { CaptionDocument, CaptionSegment, CaptionWord, TranscriptionResult, TranscriptionSegment } from "@/types";
 import { DEFAULT_SEGMENTATION_RULES } from "./segmentationRules";
 import { InsufficientTimestampDataError } from "./errors";
+import { interpolateWordsFromText } from "./interpolateWords";
 
 /**
  * Provider-agnostic normalization: `TranscriptionResult` (any provider) →
@@ -68,17 +69,5 @@ function mapProviderWords(words: TranscriptionSegment["words"]): CaptionWord[] {
 }
 
 function interpolateApproximateWords(segment: TranscriptionSegment): CaptionWord[] {
-  const tokens = segment.text.split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return [];
-
-  const span = Math.max(segment.end - segment.start, 0);
-  const perWord = span / tokens.length;
-
-  return tokens.map((text, index) => ({
-    id: generateId(),
-    text,
-    startTime: segment.start + perWord * index,
-    endTime: segment.start + perWord * (index + 1),
-    approximate: true,
-  }));
+  return interpolateWordsFromText(segment.text, segment.start, segment.end);
 }

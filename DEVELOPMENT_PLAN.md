@@ -84,22 +84,31 @@ Each phase should be built, tested, and verified before moving to the next. Do n
 
 ## Phase 4 — Caption Editor
 
-**Objective**: A user can view, edit, and navigate the generated transcript as segmented captions synchronized to playback.
+**Objective**: A user can view, edit, and navigate the generated transcript as caption segments, with edits landing in the domain `CaptionDocument`, not a parallel UI-owned model.
 
-**Features**:
-- Segmentation engine (`domain/caption-engine/segmentation.ts`) turning `CaptionWord[]` + configurable rules into `CaptionSegment[]`.
-- Transcript/caption list UI: edit text, split, merge, delete, add captions.
-- Timing adjustment UI (drag segment boundaries / numeric input).
-- Caption timeline component showing segment spans against video duration and current playback position.
-- Active-caption highlighting synced to `video.currentTime`.
+**Actually implemented** (as built, not the original speculative sketch above):
+- Segmentation engine — `domain/caption-engine/segmentCaptions.ts`, `(CaptionWord[], SegmentationRules) → CaptionSegment[]`, deterministic single-pass greedy algorithm (word/char/duration limits + pause/sentence-boundary detection). Available and fully unit-tested, but **not wired into the live transcription pipeline** — Phase 3's whisper.cpp segment boundaries are still used as-is for a freshly transcribed document; there is no "re-segment" UI trigger. Documented here rather than silently added, since it wasn't asked for.
+- Pure mutation functions — `domain/caption-engine/captionMutations.ts`: `updateCaptionText`, `updateCaptionTiming`, `splitCaption`, `mergeCaptions`, all operating on and returning a `CaptionDocument`, all preserving object identity for unrelated segments (so editing one caption doesn't re-render every other one).
+- Reusable timing validation — `domain/caption-engine/captionTimingValidation.ts` (`validateCaptionTiming`): negative/invalid range/overlap-with-neighbor/exceeds-video-duration, returns every issue found rather than a single boolean. Never auto-adjusts a neighboring segment — an edit that would overlap one is rejected, not accommodated.
+- Time format helpers — `domain/caption-engine/captionTimeFormat.ts`: `MM:SS.ss` ⇄ seconds, distinct from the player's whole-second `formatTimecode`.
+- Editor UI — `components/captions/{CaptionEditor,CaptionList,CaptionItem,CaptionTiming}.tsx`, replacing the Phase 3 read-only transcript list inside `features/transcription/TranscriptionPanel.tsx`. Per-caption: editable text (local state, committed on blur/Enter — never per keystroke), editable start/end time, select-on-focus/click, a word-boundary split picker and "merge with next" action shown only while selected.
+- Store wiring — `stores/useCaptionStore.ts` gained `updateText`, `updateTiming`, `split`, `merge`, `selectNextCaption`, `selectPreviousCaption`, and a `lastError` field; all delegate to the pure functions above rather than reimplementing logic inline.
+- One-directional player integration — selecting a caption (click or Arrow Up/Down) seeks the video to that caption's start time, via a new `seekRequestSeconds`/`requestSeek` command on `usePlaybackStore` that `VideoPlayer` applies to the real element. The reverse direction (video playback time → auto-selecting/highlighting the "current" caption) is **not** built — that's Phase 6's "synchronized caption preview" concern, not Phase 4's.
+- Word-level data handling — editing a segment's text never rewrites or deletes `words`; it sets a new `wordsStale: true` flag (an additive field on `CaptionSegment`) so future consumers know the word list may no longer correspond to the text. This was a deliberate simplification over the vaguer "re-align" language in this doc's earlier §7 note — see ARCHITECTURE.md §7 and its Phase 4 notes for the reasoning.
 
-**Files/modules likely involved**: `domain/caption-engine/segmentation.ts`, `domain/caption-engine/timing.ts`, `features/editor/*`, `components/timeline/*`, `state/captionStore.ts`.
+**Explicitly not built** (deferred, not silently dropped):
+- A caption timeline/scrubber component and "active caption follows video playback" highlighting — Phase 6 territory (synchronized visual preview), not requested for Phase 4.
+- Delete/add-caption actions — not in the Phase 4 brief's required action list; adding one would have been unrequested scope.
+- Undo/redo — mutations are structured as pure `(document, ...) → document` functions specifically so this can be added later without a rewrite, but no history stack exists yet.
+- Drag-to-adjust timing — numeric `MM:SS.ss` fields only; direct-manipulation dragging is a future enhancement.
 
-**Dependencies**: Phase 3 (needs a real `CaptionDocument`).
+**Files/modules involved**: `domain/caption-engine/{segmentCaptions,captionMutations,captionTimingValidation,captionTimeFormat,wordsText,interpolateWords,errors}.ts`, `components/captions/*`, `stores/useCaptionStore.ts`, `stores/usePlaybackStore.ts` (seek command), `components/video-player/VideoPlayer.tsx` (applies it).
 
-**Testing requirements**: Verify segmentation on both a short transcript (a few segments) and a long transcript (hundreds of segments) for UI/timeline performance; verify edits don't destroy word-level timestamps; verify split/merge preserve word timing correctly.
+**Dependencies**: Phase 3 (needs a real `CaptionDocument`) — confirmed still intact; nothing in Phase 3's pipeline was changed except one bug fix (a whisper.cpp special token, `<|endoftext|>`, wasn't being filtered — found via a real end-to-end run while testing Phase 4, fixed in `parseWhisperCppOutput.ts`).
 
-**Definition of done**: A user can see, edit, and retime captions for a real transcribed video, with the timeline accurately reflecting segment placement and current playback position, performing acceptably on a long (hundreds-of-segments) transcript.
+**Testing**: 61 new unit tests (segmentation, mutations, timing validation/format, store wiring), including two regression tests built directly from real whisper.cpp output captured during manual E2E testing (the special-token leak, and a run of degenerate identical-timestamp words from a long, un-segmented transcript). Full suite: 157 tests passing. UI-level interaction (clicking, typing, keyboard nav in a live browser) was not verified — no browser-automation tool is available in this environment; see the Phase 4 completion report's manual-testing section for exactly what was and wasn't exercised.
+
+**Definition of done**: A user can select, edit text, edit timing, split, and merge captions for a real transcribed video, with word-level timing preserved or explicitly flagged stale, and editing one caption never touching another's data or triggering its re-render.
 
 ---
 

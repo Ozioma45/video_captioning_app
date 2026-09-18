@@ -53,6 +53,31 @@ describe("parseWhisperCppOutput", () => {
     expect(allWords).not.toContain("[_TT_123]");
   });
 
+  it("filters out angle-pipe special tokens (e.g. <|endoftext|>) — a real Phase 4 E2E run leaked one", () => {
+    // This exact token, at this exact zero-duration position, was
+    // observed in a real whisper.cpp run against a ~18s clip on
+    // 2026-09-18 — the bracket-style filter above didn't catch it.
+    const result = parseWhisperCppOutput({
+      result: { language: "en" },
+      transcription: [
+        {
+          text: " Thanks for watching.",
+          offsets: { from: 16710, to: 16710 },
+          tokens: [
+            { text: " Thanks", offsets: { from: 16710, to: 16710 } },
+            { text: " for", offsets: { from: 16710, to: 16710 } },
+            { text: " watching", offsets: { from: 16710, to: 16710 } },
+            { text: ".", offsets: { from: 16710, to: 16710 } },
+            { text: "<|endoftext|>", offsets: { from: 30000, to: 30000 } },
+          ],
+        },
+      ],
+    });
+    const allWords = result.segments.flatMap((s) => s.words.map((w) => w.text));
+    expect(allWords).not.toContain("<|endoftext|>");
+    expect(allWords).toEqual(["Thanks", "for", "watching", "."]);
+  });
+
   it("throws MalformedTranscriptionResultError when the transcription array is missing", () => {
     expect(() => parseWhisperCppOutput({ result: { language: "en" } })).toThrow(MalformedTranscriptionResultError);
   });

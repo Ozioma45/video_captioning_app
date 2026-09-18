@@ -3,7 +3,7 @@
 import { AlertTriangle, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { formatTimecode } from "@/lib/format";
+import { CaptionEditor } from "@/components/captions/CaptionEditor";
 import { useTranscription } from "@/hooks/useTranscription";
 import { useCaptionStore, useProcessingStore } from "@/stores";
 import type { ProcessingStage, Video } from "@/types";
@@ -17,9 +17,10 @@ const STAGE_LABEL: Partial<Record<ProcessingStage, string>> = {
 const ACTIVE_STAGES: ProcessingStage[] = ["extracting_audio", "transcribing", "processing_captions"];
 
 /**
- * Minimum Phase 3 UI (brief §9): trigger transcription, show real
- * progress/stage, and a plain transcript preview once it's done. No
- * editing, timeline, styling, or overlay — those are later phases.
+ * Trigger/progress/error UI from Phase 3, now handing the completed
+ * transcript to the real Phase 4 `CaptionEditor` instead of a read-only
+ * list. Still no styling, overlay, or export UI — those are later
+ * phases.
  */
 export function TranscriptionPanel({ video }: { video: Video }) {
   const transcription = useProcessingStore((state) => state.transcription);
@@ -73,16 +74,7 @@ export function TranscriptionPanel({ video }: { video: Video }) {
             {captionDocument.segments.length} segments · {captionDocument.originalWords.length} words ·{" "}
             {captionDocument.language}
           </p>
-          <ul className="max-h-64 space-y-1 overflow-y-auto text-sm">
-            {captionDocument.segments.map((segment) => (
-              <li key={segment.id} className="flex gap-2">
-                <span className="shrink-0 font-mono text-xs text-muted-foreground">
-                  {formatTimecode(segment.startTime)}
-                </span>
-                <span>{segment.text}</span>
-              </li>
-            ))}
-          </ul>
+          <CaptionEditor />
         </div>
       )}
     </div>

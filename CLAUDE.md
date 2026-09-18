@@ -21,10 +21,11 @@ These rules are permanent and apply to all future work on this project, across a
 - **Do not assume short videos.** Never hard-code `duration < 60s`, `aspect ratio = 9:16`, `captions fit in 2 lines`, or similar — unless a specific feature explicitly and legitimately requires that assumption (e.g. a future Shorts-specific export mode).
 - **Test long-form scenarios.** Any change touching upload, transcription, segmentation, timeline, or export should be checked against a genuinely long (tens of minutes+) video, not just a short test clip.
 - **Never put huge video blobs in React/Zustand state.** State holds metadata, transcript, and style data — video bytes live on disk and are referenced by id/path/URL only.
+- **In a long list backed by Zustand (captions, and future timelines/style lists), preserve object identity for anything that didn't change.** Domain mutation functions should shallow-copy the array and replace only the changed element(s); list items should select their own entry by id (`array.find(x => x.id === id)`), not subscribe to the whole array — this is what makes editing one item not re-render every sibling, without reaching for a virtualization library. See `domain/caption-engine/captionMutations.ts` and `components/captions/CaptionItem.tsx`.
 
 ## Data integrity
 
-- **Preserve word-level timestamps.** Never discard word-level timing during segmentation, editing, or styling — see `ARCHITECTURE.md` §7. If a transformation can't preserve exact word timing, it must mark the result as approximate rather than silently dropping it.
+- **Preserve word-level timestamps.** Never discard word-level timing during segmentation, editing, or styling — see `ARCHITECTURE.md` §7. If a transformation can't preserve exact word timing, it must mark the result as approximate rather than silently dropping it. If a text edit means word timing can no longer be trusted, flag it (`wordsStale`) rather than deleting the words or trying to re-align them — see `ARCHITECTURE.md` §7's Phase 4 note.
 - **Protect the user's project.** A failed transcription, render, or export must never corrupt or discard the source video, transcript, or style configuration — see Rule 8 in `PROJECT.md` and `ARCHITECTURE.md` §10.
 
 ## Processing and security
@@ -40,6 +41,12 @@ These rules are permanent and apply to all future work on this project, across a
 - **Test real video files**, not only mocked data — short video, long video, landscape, vertical, no-audio, poor-audio, multi-speaker, and a large file, per `PROJECT.md` Rule 7.
 - After each major subsystem: run tests, verify the implementation manually, check for regressions in adjacent features, and report what changed and what remains — don't silently bundle unrelated changes into the same piece of work.
 - **Restart the dev server after any `npm install`/`npm uninstall`**, especially for native-binary-backed packages (ffprobe, future FFmpeg/Whisper bindings). A long-running `next dev` process can end up with a stale resolved path to a native binary after `node_modules` changes underneath it, and every exec failure that isn't a plain "binary not found" was silently misreported as "invalid video" until a 2026-09-17 debugging session fixed the error classification — see `classifyFfprobeExecError` in `services/video-processing/errors.ts`. If a processing step that worked before starts failing for no code reason, restart the dev server before debugging further.
+
+## Editor UI patterns
+
+- **Commit editable-field changes on blur/Enter, not per keystroke.** Keep the live value in local component state; only call into the store (and from there, a pure domain function) when the user finishes editing. Escape reverts to the last committed value. Dispatching on every keystroke means a full store update + re-render sweep per character — for a caption list, a style panel, or anything else with many editable items, that adds up.
+- **To re-sync local editing state from an external/store value (e.g. after an edit is committed elsewhere, or a future undo), don't use `useEffect` + `setState`.** That trips `react-hooks/set-state-in-effect` and causes an extra render pass. Use React's sanctioned "adjust state during render" pattern instead: track the last-seen external value in its own `useState`, and if it changed, call `setState` for both that tracker and the local field directly in the render body (before any early return). See `components/captions/CaptionItem.tsx` and `CaptionTiming.tsx`.
+- **Centralize cross-store side effects in one place, keyed narrowly.** When one store's state change should trigger an action on another store (e.g. selecting a caption seeks the video player), do it in one effect keyed only on the specific value that should trigger it (`selectedSegmentId`), not on a broad object that changes for unrelated reasons (the whole document) — otherwise unrelated updates (an edit to that same item's text) re-trigger the side effect too.
 
 ## Documentation
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 
 import { usePlaybackStore } from "@/stores";
@@ -16,11 +16,15 @@ import { usePlaybackStore } from "@/stores";
  * element's own Range requests to that route handle seeking.
  */
 export function VideoPlayer({ videoId }: { videoId: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
   const setCurrentTime = usePlaybackStore((state) => state.setCurrentTime);
   const setDuration = usePlaybackStore((state) => state.setDuration);
   const setIsPlaying = usePlaybackStore((state) => state.setIsPlaying);
   const setVolume = usePlaybackStore((state) => state.setVolume);
   const setIsMuted = usePlaybackStore((state) => state.setIsMuted);
+  const seekRequestSeconds = usePlaybackStore((state) => state.seekRequestSeconds);
+  const clearSeekRequest = usePlaybackStore((state) => state.clearSeekRequest);
   const reset = usePlaybackStore((state) => state.reset);
 
   const [playbackError, setPlaybackError] = useState<string | null>(null);
@@ -28,6 +32,17 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
   useEffect(() => {
     return () => reset();
   }, [reset]);
+
+  // Phase 4: clicking/navigating a caption requests a seek via the store;
+  // this is the one place that command is actually applied to the real
+  // element (see usePlaybackStore's doc comment).
+  useEffect(() => {
+    if (seekRequestSeconds === null) return;
+    if (videoRef.current) {
+      videoRef.current.currentTime = seekRequestSeconds;
+    }
+    clearSeekRequest();
+  }, [seekRequestSeconds, clearSeekRequest]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -38,6 +53,7 @@ export function VideoPlayer({ videoId }: { videoId: string }) {
         </div>
       )}
       <video
+        ref={videoRef}
         controls
         preload="metadata"
         className="w-full rounded-lg bg-black"

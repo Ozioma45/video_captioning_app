@@ -12,3 +12,33 @@ export class InsufficientTimestampDataError extends Error {
     this.name = "InsufficientTimestampDataError";
   }
 }
+
+/** Phase 4 editing errors — thrown by domain/caption-engine/captionMutations.ts. */
+
+export class CaptionSegmentNotFoundError extends Error {
+  constructor(segmentId: string) {
+    super(`No caption segment with id ${segmentId}`);
+    this.name = "CaptionSegmentNotFoundError";
+  }
+}
+
+export class InvalidCaptionTimingError extends Error {
+  constructor(public readonly issues: string[]) {
+    super(`Invalid caption timing: ${issues.join("; ")}`);
+    this.name = "InvalidCaptionTimingError";
+  }
+}
+
+export class InvalidCaptionSplitError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "InvalidCaptionSplitError";
+  }
+}
+
+export class SegmentsNotAdjacentError extends Error {
+  constructor() {
+    super("Only adjacent caption segments can be merged");
+    this.name = "SegmentsNotAdjacentError";
+  }
+}

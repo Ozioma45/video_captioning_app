@@ -27,10 +27,15 @@ export interface WhisperCppOutput {
   transcription?: WhisperCppSegment[];
 }
 
-// whisper.cpp emits control/special tokens like "[_BEG_]", "[_TT_123]",
-// "[_SOT_]" interleaved with real words — these aren't spoken words and
-// must never end up in a CaptionWord.
-const SPECIAL_TOKEN_PATTERN = /^\[_[A-Z_0-9]+\]$/;
+// whisper.cpp emits control/special tokens interleaved with real words —
+// these aren't spoken words and must never end up in a CaptionWord.
+// Two conventions have been observed in real output (not just assumed):
+// the older bracket style ("[_BEG_]", "[_TT_123]") and the newer
+// angle-pipe style used by the current tokenizer ("<|endoftext|>",
+// "<|en|>", "<|transcribe|>") — the latter was caught by a real Phase 4
+// end-to-end run (2026-09-18) leaking a literal "<|endoftext|>" token
+// into a CaptionWord at the tail of a long, single-segment transcript.
+const SPECIAL_TOKEN_PATTERN = /^(\[_[A-Z_0-9]+\]|<\|[a-zA-Z0-9._]+\|>)$/;
 
 function msToSeconds(ms: number | undefined): number {
   return typeof ms === "number" && Number.isFinite(ms) ? ms / 1000 : 0;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_SEGMENTATION_RULES } from "@/domain/caption-engine/segmentationRules";
 import type { CaptionDocument, CaptionWord } from "../caption";
 
 function buildFixtureDocument(): CaptionDocument {
@@ -15,14 +16,7 @@ function buildFixtureDocument(): CaptionDocument {
     videoId: "video1",
     language: "en",
     originalWords: words,
-    segmentationRules: {
-      maxWordsPerSegment: 8,
-      maxCharsPerLine: 40,
-      maxLines: 2,
-      minSegmentDurationSeconds: 0.5,
-      maxSegmentDurationSeconds: 6,
-      breakOnPunctuation: true,
-    },
+    segmentationRules: DEFAULT_SEGMENTATION_RULES,
     segments: [
       {
         id: "seg1",
