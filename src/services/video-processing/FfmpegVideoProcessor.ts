@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { stat } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import ffprobeInstaller from "@ffprobe-installer/ffprobe";
@@ -95,6 +95,12 @@ export class FfmpegVideoProcessor implements VideoProcessor {
    * percentage — while still cleanly killing the process on timeout.
    */
   async extractAudio(videoFilePath: string, outputAudioPath: string, options: ExtractAudioOptions): Promise<void> {
+    // ffmpeg won't create missing parent directories itself — a real
+    // 2026-09-18 E2E run against a fresh job's never-before-used temp
+    // directory failed with "No such file or directory" until this was
+    // added. Mirrors LocalFilesystemStorage.save's same mkdir call.
+    await mkdir(path.dirname(outputAudioPath), { recursive: true });
+
     const args = [
       "-y",
       "-i",

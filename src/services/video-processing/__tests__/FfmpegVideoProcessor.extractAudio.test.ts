@@ -80,4 +80,20 @@ describe("FfmpegVideoProcessor.extractAudio (real ffmpeg)", () => {
     expect(probed.streams[0].channels).toBe(1);
     expect(probed.streams[0].codec_name).toBe("pcm_s16le");
   }, 30_000);
+
+  it("creates the destination directory when it doesn't exist yet", async () => {
+    // Regression test: a real E2E run (2026-09-18) against a job's
+    // never-before-used temp directory failed with ffmpeg's own "No such
+    // file or directory", because nothing had created that directory yet
+    // — the earlier test above never caught this since mkdtemp already
+    // creates its directory. This mirrors the real job-runner shape:
+    // `temp/{jobId}/audio.wav` where `temp/{jobId}/` doesn't exist yet.
+    const processor = new FfmpegVideoProcessor();
+    const outputPath = path.join(tempDir, "never-created-yet", "nested", "audio.wav");
+
+    await processor.extractAudio(sourceVideoPath, outputPath, { durationSeconds: 1 });
+
+    const stats = await stat(outputPath);
+    expect(stats.size).toBeGreaterThan(0);
+  }, 30_000);
 });
