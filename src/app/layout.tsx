@@ -1,14 +1,19 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 
 import { APP_NAME } from "@/config/app";
 import { AppHeader } from "@/components/shared/AppHeader";
 
 import "./globals.css";
 
-const inter = Inter({
+// Self-hosted (see fonts/README.md) rather than next/font/google's Inter,
+// which fetches this same file live from fonts.gstatic.com on every cold
+// dev/build — occasionally hitting a network timeout in this environment
+// that both Turbopack and Webpack then surface as a hard build error.
+const inter = localFont({
+  src: "./fonts/Inter-Variable.woff2",
   variable: "--font-inter",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {

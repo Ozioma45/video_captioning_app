@@ -3,9 +3,16 @@
 import { VideoMetadataPanel } from "@/components/video-player/VideoMetadataPanel";
 import { VideoPlayer } from "@/components/video-player/VideoPlayer";
 import { UploadDropzone } from "@/features/upload/UploadDropzone";
-import { TranscriptionPanel } from "@/features/transcription/TranscriptionPanel";
+import { CaptionWorkspace } from "@/features/captions/CaptionWorkspace";
 import { useProjectStore } from "@/stores";
 
+/**
+ * Layout (UI revision): video + info sidebar in a top row, caption
+ * editing as a full-width workspace underneath — not squeezed into the
+ * sidebar, where long sentences wrapped excessively (DESIGN_SYSTEM.md
+ * §7's "video + timeline/workspace + settings" relationship, adapted:
+ * the caption workspace takes the row a timeline would occupy).
+ */
 export default function Home() {
   const video = useProjectStore((state) => state.video);
 
@@ -22,14 +29,16 @@ export default function Home() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6 md:flex-row">
-      <div className="flex-1">
-        <VideoPlayer key={video.id} videoId={video.id} />
+    <div className="flex flex-1 flex-col gap-6 p-6">
+      <div className="flex flex-col gap-6 md:flex-row">
+        <div className="flex-1">
+          <VideoPlayer key={video.id} videoId={video.id} />
+        </div>
+        <div className="w-full shrink-0 md:w-72">
+          <VideoMetadataPanel video={video} />
+        </div>
       </div>
-      <div className="flex w-full shrink-0 flex-col gap-4 md:w-72">
-        <VideoMetadataPanel video={video} />
-        <TranscriptionPanel video={video} />
-      </div>
+      <CaptionWorkspace video={video} />
     </div>
   );
 }

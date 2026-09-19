@@ -17,12 +17,15 @@ const STAGE_LABEL: Partial<Record<ProcessingStage, string>> = {
 const ACTIVE_STAGES: ProcessingStage[] = ["extracting_audio", "transcribing", "processing_captions"];
 
 /**
- * Trigger/progress/error UI from Phase 3, now handing the completed
- * transcript to the real Phase 4 `CaptionEditor` instead of a read-only
- * list. Still no styling, overlay, or export UI — those are later
- * phases.
+ * Full-width bottom workspace (UI revision — moved out of the narrow
+ * right sidebar, where long sentences wrapped excessively and editing
+ * felt cramped). Same trigger/progress/error responsibility as the
+ * Phase 3 `TranscriptionPanel` this replaces; only the placement and
+ * layout changed, not the underlying data flow
+ * (`whisper.cpp → TranscriptionResult → CaptionDocument → Zustand →
+ * CaptionEditor`, unchanged).
  */
-export function TranscriptionPanel({ video }: { video: Video }) {
+export function CaptionWorkspace({ video }: { video: Video }) {
   const transcription = useProcessingStore((state) => state.transcription);
   const captionDocument = useCaptionStore((state) => state.captionDocument);
   const { generateCaptions } = useTranscription();
@@ -68,14 +71,12 @@ export function TranscriptionPanel({ video }: { video: Video }) {
         </div>
       )}
 
-      {isDone && captionDocument && (
-        <div className="flex flex-col gap-2">
-          <p className="text-xs text-muted-foreground">
-            {captionDocument.segments.length} segments · {captionDocument.originalWords.length} words ·{" "}
-            {captionDocument.language}
-          </p>
-          <CaptionEditor />
-        </div>
+      {isDone && captionDocument && <CaptionEditor />}
+
+      {!isDone && !isActive && !isFailed && (
+        <p className="text-sm text-muted-foreground">
+          No captions yet. Click &quot;Generate captions&quot; to transcribe this video.
+        </p>
       )}
     </div>
   );

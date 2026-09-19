@@ -24,13 +24,7 @@ export function CaptionList() {
   return (
     <ul className="flex flex-col gap-2">
       {segmentIds.map((id, index) => (
-        <CaptionItem
-          key={id}
-          segmentId={id}
-          index={index}
-          nextSegmentId={segmentIds[index + 1]}
-          isLast={index === segmentIds.length - 1}
-        />
+        <CaptionItem key={id} segmentId={id} index={index} />
       ))}
     </ul>
   );
