@@ -114,22 +114,19 @@ Each phase should be built, tested, and verified before moving to the next. Do n
 
 ## Phase 5 — Caption Styles
 
-**Objective**: A user can apply and customize one of 5 polished caption style presets.
+**Objective**: A user can pick and customize one of 5 caption style presets. The result is a validated, serializable style configuration that Phase 6 (preview) and Phase 7 (export) will consume.
 
-**Features**:
-- `CaptionStyle` type + style resolver (`domain/style-engine/resolve.ts`).
-- 5 initial style presets defined as data (Classic, Karaoke, Dynamic, Highlight, Podcast).
-- Style switcher UI.
-- Customization panel (typography, color, position, appearance, layout, animation) built generically against the `CaptionStyle` shape — not one UI per style.
-- Style overrides layered on top of a base preset.
+**Actually implemented**:
+- Style model — `types/style.ts`: `CaptionStyle` (typography, colors, background, outline, shadow, position, highlight mode, animation, max lines) and `CaptionStyleConfig = { baseStyleId, style }`. Structured data only — hex colors, registry font ids, pixel values relative to a 1080-line reference frame; never CSS strings.
+- Domain — `domain/style-engine/`: `stylePresets.ts` (Classic, Karaoke, Dynamic, Highlight, Podcast as data), `styleRegistry.ts` (deep-frozen presets, `listStylePresets`, `getStylePreset`, `createStyleConfig`, `isStyleModified`), `validateStyle.ts` (`STYLE_LIMITS`, reports every issue), `updateStyle.ts` (`patchCaptionStyle`, `resetStyleConfig`), `fonts.ts` (fixed font registry: self-hosted Inter + system stacks), `errors.ts`.
+- Store — `stores/useStyleStore.ts`: `selectStyle`, `updateStyle`/`updateTypography`/`updateColors`/`updatePosition`, `resetStyle`, `reset`. Domain errors land in `lastError`; an invalid change leaves the config untouched.
+- UI — `components/style/`: right-hand inspector with Info | Style tabs; preset selector with static previews; generic controls panel (typography, colors, appearance, position, word highlight & animation). Controls that would be inert under the current settings are hidden.
 
-**Files/modules likely involved**: `domain/style-engine/*`, `features/styles/*`, `state/styleStore.ts`, `types/captionStyle.ts`.
+**Explicitly not built**: captions over the video, playback sync, word highlighting during playback, any animation actually running (Phase 6); ASS generation, burn-in, export (Phase 7); custom font upload; saving/loading named user presets; persisting the style with a project (no project persistence exists yet).
 
-**Dependencies**: Phase 4 (needs caption segments to apply styles to).
+**Testing**: registry, validation, patch and store unit tests (including preset non-mutation, and that style changes never touch caption or processing state). Real-browser check via Chrome DevTools Protocol against the running app: upload → transcribe → select each preset → edit size/colors/background/position → reset; caption text/timing unchanged and no upload/transcription request issued by style changes.
 
-**Testing requirements**: Verify all 5 presets render correctly against both a short and a long caption document; verify word-highlight styles (Karaoke, Dynamic) correctly track word-level timing; verify switching styles never mutates the underlying transcript.
-
-**Definition of done**: All 5 styles are selectable, visually distinct, and customizable through one generic panel; switching styles is instantaneous and non-destructive.
+**Definition of done**: All 5 presets selectable and visually distinct in the picker, customizable through one generic panel, resettable to preset defaults, with switching non-destructive to the transcript. Whether a style *looks right on video* is verified in Phase 6/7, not here.
 
 ---
 

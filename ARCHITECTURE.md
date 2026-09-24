@@ -195,7 +195,7 @@ Preview Renderer              Export Renderer
 
 - A style is **data, not a component.** All five V1 styles (Classic, Karaoke, Dynamic, Highlight, Podcast) are instances of the same `CaptionStyle` type with different field values (see PROJECT.md §15–17 for the type shape). There is exactly one `<CaptionOverlay style={style} />` component and one `assGenerator(style)` function — neither branches on "which of the 5 styles is this," they just read fields.
 - Adding style #6 means adding a new `CaptionStyle` config object (and, if it needs a genuinely new animation behavior, one new case in the small, closed `AnimationConfig` union) — never a new React component or a new FFmpeg command template.
-- **Styles are stored independently from caption documents.** A project references `{ captionDocumentId, styleId, styleOverrides? }`. Switching styles is a reference swap; it never touches the transcript. `styleOverrides` lets a user tweak a preset (e.g. change Classic's color) without forking the whole style — the resolver merges `baseStyle + overrides`.
+- **Styles are stored independently from caption documents.** A project holds a `CaptionStyleConfig = { baseStyleId, style }`: the preset it started from plus a full deep copy of that preset's `CaptionStyle`, which user edits modify. (An earlier sketch used sparse `styleOverrides` merged at resolve time; Phase 5 replaced it with a full copy because it needs no merge step, and a project keeps its look even if a preset is later revised.) Switching styles never touches the transcript. See §23.
 - Animation is expressed through a small closed set of primitives (`fade`, `pop`/scale, `slide`, `wordHighlight`, `none`) chosen specifically because each one has a known, faithful ASS-tag equivalent (`\fad`, `\t` transforms, `\move`, `\k` karaoke). This constraint is deliberate — see §9.
 
 ---
@@ -500,3 +500,21 @@ Preview strategy clarification: the player streams from `GET /api/videos/[videoI
 **Real E2E testing surfaced one Phase 3 bug, fixed here.** A real whisper.cpp run against a long (~18s, unsegmented into multiple whisper-level segments) test clip leaked a literal `<|endoftext|>` token into the word list — `parseWhisperCppOutput.ts`'s special-token filter only recognized the older bracket convention (`[_TT_123]`), not this tokenizer's angle-pipe convention. Fixed by broadening the filter; regression test added using the exact observed token/position. The same real run also produced many consecutive words sharing an identical, degenerate timestamp (a known long-segment alignment artifact, not a bug in this codebase) — confirmed `splitCaption` already rejects a split that would land on it cleanly (`InvalidCaptionSplitError`) rather than producing a corrupt zero-duration segment; a regression test captures this real shape too.
 
 **Manual E2E verification was real but partial.** The full backend pipeline (upload → ffmpeg → whisper.cpp → normalize → `CaptionDocument`) was re-verified end to end with real audio after the bug fix above. The client-side editor interactions (clicking a caption, typing an edit, clicking split/merge, arrow-key navigation, confirming the video actually seeks) were not verified by literally operating a browser — no browser-automation tool is available in this environment. See the Phase 4 completion report for the precise boundary between what was tested for real and what was verified only by code review and the automated test suite.
+
+---
+
+## 23. Phase 5 Implementation Notes
+
+**Model.** `CaptionStyle` (`types/style.ts`) is plain serializable data grouped as typography, colors, background, outline, shadow, position, `highlightMode`, `animation`, `maxLines`. It is independent of `CaptionWord`/`CaptionSegment`. Colors are `#RRGGBB`; fonts are ids from a fixed registry (`domain/style-engine/fonts.ts`: self-hosted Inter and system sans/serif/mono stacks — no remote font host); sizes and offsets are pixels in a 1080-line reference frame so a renderer scales them to any resolution or aspect ratio. No raw CSS lives in state.
+
+**Registry vs. project config.** Presets live in `styleRegistry.ts` as deep-frozen data. `createStyleConfig(id)` returns `{ baseStyleId, style: structuredClone(preset) }`; edits go through `patchCaptionStyle`, which shallow-merges per group, validates the result, and throws `InvalidStyleError` instead of storing an invalid style. `resetStyleConfig` re-clones the base preset. The global presets are never mutated. `isStyleModified` drives the "modified" indicator.
+
+**Validation.** `validateCaptionStyle` returns every issue (path + message) and never throws; ranges are in `STYLE_LIMITS` and shared with the UI sliders so the two can't drift.
+
+**Animation and word-highlight configuration.** `AnimationKind` is the closed set `none | fade | pop | slide | wordHighlight` (each has an ASS equivalent, per §8) with a duration. `HighlightMode` is `none | activeWord | emphasis`. These are *declarations of intent*: nothing in Phase 5 plays an animation or decides which word is active. The preview in the picker is static; it marks a fixed sample word only to show the highlight color.
+
+**Fonts and export.** Preview uses `next/font/local` Inter via a CSS variable. Phase 7's libass render cannot see browser fonts; it will need the same Inter file supplied to FFmpeg (`fontsdir`) or an installed font. Licensing: Inter is SIL OFL 1.1.
+
+**Deferred.** Phase 6: overlay renderer, playback sync, active-word tracking, running animations. Phase 7: ASS generation and burn-in, font provisioning. Later: persisted/named user presets, project persistence of the style config.
+
+**UI placement.** Styling lives in a right-hand inspector (Info | Style tabs), not the bottom caption workspace, so the editor keeps its full width.

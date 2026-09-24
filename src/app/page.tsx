@@ -1,6 +1,6 @@
 "use client";
 
-import { VideoMetadataPanel } from "@/components/video-player/VideoMetadataPanel";
+import { InspectorPanel } from "@/components/style/InspectorPanel";
 import { VideoPlayer } from "@/components/video-player/VideoPlayer";
 import { UploadDropzone } from "@/features/upload/UploadDropzone";
 import { CaptionWorkspace } from "@/features/captions/CaptionWorkspace";
@@ -34,8 +34,8 @@ export default function Home() {
         <div className="flex-1">
           <VideoPlayer key={video.id} videoId={video.id} />
         </div>
-        <div className="w-full shrink-0 md:w-72">
-          <VideoMetadataPanel video={video} />
+        <div className="w-full shrink-0 md:w-80">
+          <InspectorPanel video={video} />
         </div>
       </div>
       <CaptionWorkspace video={video} />

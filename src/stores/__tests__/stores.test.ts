@@ -26,8 +26,8 @@ describe("store defaults", () => {
     expect(state.selectedSegmentId).toBeNull();
   });
 
-  it("useStyleStore starts with no style config", () => {
-    expect(useStyleStore.getState().styleConfig).toBeNull();
+  it("useStyleStore starts on the default Classic preset (Phase 5: a style is always selected)", () => {
+    expect(useStyleStore.getState().styleConfig.baseStyleId).toBe("classic");
   });
 
   it("useProcessingStore starts idle with no fake progress", () => {
@@ -41,18 +41,17 @@ describe("store defaults", () => {
 });
 
 describe("store actions", () => {
-  it("useStyleStore.selectBaseStyle sets an empty-override config", () => {
-    useStyleStore.getState().selectBaseStyle("classic");
-    expect(useStyleStore.getState().styleConfig).toEqual({ baseStyleId: "classic", overrides: {} });
+  it("useStyleStore.selectStyle switches the base preset", () => {
+    useStyleStore.getState().selectStyle("karaoke");
+    expect(useStyleStore.getState().styleConfig.baseStyleId).toBe("karaoke");
     useStyleStore.getState().reset();
   });
 
-  it("useStyleStore.setOverride merges into overrides without touching the base style", () => {
-    useStyleStore.getState().selectBaseStyle("classic");
-    useStyleStore.getState().setOverride("textColor", "#ff0000");
+  it("useStyleStore.updateColors edits the project's config without changing its base preset id", () => {
+    useStyleStore.getState().updateColors({ text: "#FF0000" });
     const config = useStyleStore.getState().styleConfig;
-    expect(config?.baseStyleId).toBe("classic");
-    expect(config?.overrides).toEqual({ textColor: "#ff0000" });
+    expect(config.baseStyleId).toBe("classic");
+    expect(config.style.colors.text).toBe("#FF0000");
     useStyleStore.getState().reset();
   });
 
