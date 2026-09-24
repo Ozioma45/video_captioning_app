@@ -518,3 +518,29 @@ Preview strategy clarification: the player streams from `GET /api/videos/[videoI
 **Deferred.** Phase 6: overlay renderer, playback sync, active-word tracking, running animations. Phase 7: ASS generation and burn-in, font provisioning. Later: persisted/named user presets, project persistence of the style config.
 
 **UI placement.** Styling lives in a right-hand inspector (Info | Style tabs), not the bottom caption workspace, so the editor keeps its full width.
+
+---
+
+## 24. Phase 6 Implementation Notes
+
+**Data flow.** `video.currentTime` (source of truth) → `usePlaybackStore.currentTime` (read model) → `findActiveSegment` → `findActiveWord` → `resolveCaptionDisplay` → `CaptionOverlay`. Nothing is stored between those steps, so a seek can never leave a stale caption.
+
+**Where this diverges from §9.** §9 sketched `style-engine.resolve()` shared with the exporter and a Zustand `currentTime` fed by `timeupdate` + rAF. As built: there is no `resolve()` yet — `styleToCss` maps a `CaptionStyle` to CSS for the preview, and Phase 7 will need its own ASS mapping from the same fields. Every style field is intended to be expressible in libass (outline, shadow, box background, colors, fade/pop/slide via ASS tags), but preview-vs-export parity is *not yet verified* and is a Phase 7 concern.
+
+**Units.** Seconds throughout. The caption model, Whisper output and the video element all use seconds; a millisecond boundary would add conversions and rounding for no benefit.
+
+**Boundary convention.** `start <= t < end` for segments and words. Adjacent segments hand off exactly at the shared boundary; there is no frame where two show or none shows.
+
+**Synchronization.** One sync effect in `VideoPlayer`: `seeking`/`seeked`/`timeupdate` write the time, `play`/`playing` start a single `requestAnimationFrame` loop and `pause`/`ended` stop it (and write the final time). `timeupdate` alone (~4 Hz) is too coarse for word highlighting; the loop runs only while playing. `setCurrentTime` ignores unchanged values.
+
+**Performance.** The overlay subscribes with selectors that return the active segment/word *objects*, so a per-frame time update re-renders it only when the caption or word changes. Measured in a real browser during Karaoke playback: 0 DOM mutations in the caption editor list, ~25 overlay mutations over ~360 frames. The document is never rewritten by playback. Segment lookup is O(log n); word lookup is a linear scan of one segment's words.
+
+**Word timing and fallbacks.** Word highlighting uses the real Whisper word timestamps only. If a segment has no words, its words are stale (text was edited, per Phase 4's `wordsStale`), or the timing is malformed, the overlay renders the segment's current text without highlighting — it never estimates timing. Consequence: after editing a caption's text, Karaoke/Dynamic show that caption without word highlighting until word timing can be re-derived (not built).
+
+**Renderer architecture.** The brief suggested a renderer component per preset. That contradicts CLAUDE.md ("adding a style must never require a new component") and §8, so a single data-driven `CaptionOverlay` is used: behavior comes from `highlightMode` and `animation.kind`, not from a preset id. The five looks are the five presets' data. `AnimationKind` maps to keyframes in `globals.css` through a closed lookup: `fade`/`pop`/`slide` play once when a caption mounts and finish in the resting state, so nothing lingers after the caption ends; `wordHighlight`/`pop` also transition the active word's color (and scale, for pop). `prefers-reduced-motion` disables them.
+
+**Overlay geometry.** The overlay is `absolute inset-0` inside a box that wraps only the video, with `container-type: size`. Style pixel values (1080-line reference) become `cqh` units, so text and offsets scale with the video's rendered height through window resize, layout changes and fullscreen without any JS measurement. `pointer-events: none` keeps the native controls usable. Native fullscreen only fullscreens the `<video>` element (dropping the overlay), so the native fullscreen button is disabled (`controlsList="nofullscreen"`) and the player provides its own that fullscreens the video+overlay box; in fullscreen the box is sized to the video's aspect ratio so the overlay stays aligned when letterboxed.
+
+**Highlight style.** `highlightMode: "emphasis"` has no keyword data behind it. It emphasizes the segment's last word (same as the style picker sample) — a placeholder, not keyword detection.
+
+**Phase 7 remaining.** ASS generation and burn-in, font provisioning for libass, and a preview-vs-export parity check.

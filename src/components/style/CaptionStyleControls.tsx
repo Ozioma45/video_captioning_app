@@ -88,7 +88,7 @@ export function CaptionStyleControls() {
       <div className="flex flex-col gap-2">
         <CaptionStylePreview style={style} scale={0.36} />
         <p className="text-xs text-muted-foreground">
-          Style preview only — captions appear over the video in a later phase.
+          Static sample. Live captions in this style appear over the video when it plays.
         </p>
       </div>
 

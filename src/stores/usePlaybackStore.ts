@@ -41,7 +41,8 @@ const defaults = {
 
 export const usePlaybackStore = create<PlaybackState>((set) => ({
   ...defaults,
-  setCurrentTime: (seconds) => set({ currentTime: seconds }),
+  // No-op when unchanged so redundant syncs (event + frame loop) don't notify subscribers.
+  setCurrentTime: (seconds) => set((state) => (state.currentTime === seconds ? state : { currentTime: seconds })),
   setDuration: (seconds) => set({ durationSeconds: seconds }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setVolume: (volume) => set({ volume }),

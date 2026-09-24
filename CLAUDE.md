@@ -44,6 +44,8 @@ These rules are permanent and apply to all future work on this project, across a
 
 - **Style state is structured data, never CSS.** Colors are `#RRGGBB`, fonts come from the registry in `domain/style-engine/fonts.ts`, and there is no runtime dependency on a remote font host. Presets are frozen; always go through `createStyleConfig` / `patchCaptionStyle` so a preset is never mutated and every change is validated.
 
+- **Playback-derived state is derived, not stored.** The active caption/word are computed from `(currentTime, segments)` by the pure functions in `domain/caption-engine/captionLookup.ts` — never kept in a store where seeking could leave them stale. Components subscribe with selectors that return the derived object (so a per-frame time update re-renders them only when it changes), and `currentTime` is written to the playback store from one place only (`VideoPlayer`'s sync effect). Caption times are seconds everywhere.
+
 ## Editor UI patterns
 
 - **Commit editable-field changes on blur/Enter, not per keystroke.** Keep the live value in local component state; only call into the store (and from there, a pure domain function) when the user finishes editing. Escape reverts to the last committed value. Dispatching on every keystroke means a full store update + re-render sweep per character — for a caption list, a style panel, or anything else with many editable items, that adds up.

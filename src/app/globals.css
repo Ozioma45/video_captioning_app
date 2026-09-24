@@ -80,3 +80,23 @@ body {
   background: var(--color-background);
   color: var(--color-foreground);
 }
+
+/* Phase 6 caption-overlay entrance animations. Each plays once when a
+   caption mounts and ends in its resting state, so nothing keeps running
+   (or leaves a caption half-faded) after the caption's end time. */
+@keyframes caption-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes caption-pop {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes caption-slide {
+  from { opacity: 0; transform: translateY(0.8em); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-caption-block] { animation: none !important; }
+  [data-caption-block] [data-caption-word] { transition: none !important; transform: none !important; }
+}

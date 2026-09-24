@@ -132,21 +132,20 @@ Each phase should be built, tested, and verified before moving to the next. Do n
 
 ## Phase 6 — Preview
 
-**Objective**: Real-time preview accurately reflects the selected style and stays synchronized with video and caption timing.
+**Objective**: The selected caption style is drawn over the playing video, synchronized to real playback time, including word-level highlighting where the style calls for it.
 
-**Features**:
-- Preview overlay component consuming `style-engine.resolve()` output.
-- rAF-driven sync loop reading `video.currentTime`.
-- Real-time update on style/customization changes (no re-render lag).
-- Timeline ↔ preview synchronization (scrubbing the timeline updates the preview and vice versa).
+**Actually implemented**:
+- Lookup — `domain/caption-engine/captionLookup.ts`: `findActiveSegment(segments, t)` (binary search, start-inclusive/end-exclusive, bounded look-back for malformed overlaps), `findActiveWord(segment, t)` and `hasUsableWordTiming(segment)`. Pure; times are **seconds**, the unit the caption model and `video.currentTime` already share (the brief's millisecond example did not match the codebase, so no conversion layer was added).
+- Display decision — `domain/style-engine/captionDisplay.ts`: `resolveCaptionDisplay(segment, style)` → plain text, or individually addressable words with "track active word" / "emphasized word". Driven by `highlightMode` and word-timing validity, never by preset id.
+- Overlay — `components/caption-overlay/CaptionOverlay.tsx`: derives everything from `(currentTime, segments, style)`; stores nothing. `styleToCss` (in `components/style/previewCss.ts`) is the one place style data becomes CSS, shared with the style-picker preview.
+- Player — `VideoPlayer` wraps the video and overlay in one positioning box, mirrors `currentTime` into the store from the element (seek/pause/end events plus one rAF loop only while playing), and provides its own fullscreen button (native fullscreen would hide the overlay).
+- Dev-only `CaptionDebugReadout` under the player (not rendered in production).
 
-**Files/modules likely involved**: `components/caption-overlay/*`, `features/editor/preview-sync.ts`, `state/playbackStore.ts`.
+**Explicitly not built**: burn-in/export (Phase 7); per-preset renderer components (see ARCHITECTURE.md §24 — deliberately data-driven per CLAUDE.md); keyword detection for the Highlight style; a timeline/scrubber; caption animation beyond a one-shot entrance (fade/pop/slide) and color/scale transitions on the active word.
 
-**Dependencies**: Phases 4 and 5 (needs both segments and styles).
+**Testing**: lookup boundary/edge tests, display-decision tests for all five presets and the missing/stale/malformed word fallbacks, store-level integration tests (playback, edit, timing, split, merge, style change). Real-browser verification against the real `<video>` element with real Whisper timestamps as ground truth — see ARCHITECTURE.md §24.
 
-**Testing requirements**: Verify preview stays in sync during scrubbing, fast playback, and pause on both short and long videos; verify no visual drift between what the preview shows and what the style config describes.
-
-**Definition of done**: Preview accurately and smoothly reflects the current style and caption timing at any point in a video of any tested length.
+**Definition of done**: Captions appear/disappear at the right time during playback, after seeks and across pause/resume; Karaoke/Dynamic highlight the word Whisper timestamped; edits, splits, merges, style and position changes show up immediately; the overlay stays aligned through resize and fullscreen.
 
 ---
 

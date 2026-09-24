@@ -14,26 +14,33 @@ export function hexToRgba(hex: HexColor, alpha: number): string {
 const JUSTIFY = { top: "flex-start", center: "center", bottom: "flex-end" } as const;
 const ALIGN = { left: "flex-start", center: "center", right: "flex-end" } as const;
 
+/** How reference-frame pixels and the edge offset become CSS lengths. */
+export interface StyleCssUnits {
+  /** 1080-line reference pixels → a CSS length. */
+  length: (referencePx: number) => string;
+  /** Distance-from-edge (percent of frame height) → a CSS length. */
+  edgeOffset: (percent: number) => string;
+}
+
 /**
- * Maps a structured `CaptionStyle` to inline CSS for the *style-picker
- * preview only* (Phase 5 brief §8). `scale` shrinks the 1080-line
- * reference pixel values to the preview's size. This is not the Phase 6
- * video overlay renderer — it's the only place style data becomes CSS,
- * and no CSS ever flows the other way into the style model.
+ * The single place structured `CaptionStyle` data becomes CSS — shared by
+ * the style-picker preview (fixed px scale) and the Phase 6 video overlay
+ * (container-relative `cqh` units), so the two can't diverge. No CSS ever
+ * flows back into the style model.
  */
-export function previewStyleToCss(
+export function styleToCss(
   style: CaptionStyle,
-  scale: number,
+  units: StyleCssUnits,
 ): { frame: CSSProperties; block: CSSProperties } {
   const { typography, colors, background, outline, shadow, position } = style;
-  const px = (value: number) => `${value * scale}px`;
+  const px = units.length;
 
   const frame: CSSProperties = {
     display: "flex",
     flexDirection: "column",
     justifyContent: JUSTIFY[position.vertical],
     alignItems: ALIGN[position.horizontal],
-    padding: position.vertical === "center" ? 0 : `${position.offsetPercent}% 6%`,
+    padding: position.vertical === "center" ? 0 : `${units.edgeOffset(position.offsetPercent)} 6%`,
   };
 
   const hasShadow = shadow.blurPx > 0 || shadow.distancePx > 0;
@@ -57,4 +64,12 @@ export function previewStyleToCss(
   };
 
   return { frame, block };
+}
+
+/** Style-picker preview: `scale` shrinks reference pixels to the preview size. */
+export function previewStyleToCss(style: CaptionStyle, scale: number) {
+  return styleToCss(style, {
+    length: (value) => `${value * scale}px`,
+    edgeOffset: (percent) => `${percent}%`,
+  });
 }
