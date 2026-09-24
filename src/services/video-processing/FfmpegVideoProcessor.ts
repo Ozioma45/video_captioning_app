@@ -7,10 +7,11 @@ import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 
 import type { VideoMetadata } from "@/types";
-import type { ExtractAudioOptions, VideoProcessor } from "./VideoProcessingService";
+import type { ExtractAudioOptions, RenderOptions, VideoProcessor } from "./VideoProcessingService";
+import { buildRenderArgs } from "./buildRenderArgs";
 import { parseFfprobeOutput, type FfprobeOutput } from "./parseFfprobeOutput";
 import { computeProgressPercent, extractLatestOutTimeSeconds } from "./parseFfmpegProgress";
-import { classifyFfmpegExecError, classifyFfprobeExecError, UnreadableVideoError } from "./errors";
+import { classifyFfmpegExecError, classifyFfmpegRenderError, classifyFfprobeExecError, UnreadableVideoError } from "./errors";
 
 const execFileAsync = promisify(execFile);
 
@@ -27,9 +28,8 @@ const FFMPEG_EXTRACT_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
  * `VideoProcessor` implementation backed by ffprobe/FFmpeg
- * (ARCHITECTURE.md §5, §10; PROJECT.md §23-24). Only `getMetadata` is real
- * in Phase 2 — `extractAudio` (Phase 3) and `render` (Phase 7) throw
- * rather than pretending to work (CLAUDE.md "do not fake functionality").
+ * (ARCHITECTURE.md §5, §10; PROJECT.md §23-24): `getMetadata` (Phase 2),
+ * `extractAudio` (Phase 3) and `render` (Phase 7).
  *
  * ffprobe is always invoked via `execFile` with an argument array, never
  * a shell string — the path being probed is always a server-generated
@@ -176,8 +176,81 @@ export class FfmpegVideoProcessor implements VideoProcessor {
     });
   }
 
-  async render(): Promise<void> {
-    throw new Error("render is not implemented until Phase 7 (export)");
+  /**
+   * Burns ASS captions into the video. `spawn` with an argument array (see
+   * `buildRenderArgs`), run inside `options.workingDirectory` so the
+   * subtitle file and fonts directory are referenced by relative name.
+   * Streams `-progress pipe:1` for real progress against the source
+   * duration; the video is processed by FFmpeg as a file/stream, never read
+   * into Node. `onProcessStart` hands the caller a handle that kills the
+   * process (cancellation).
+   */
+  async render(videoFilePath: string, options: RenderOptions): Promise<void> {
+    const args = buildRenderArgs(videoFilePath, options);
+    await mkdir(path.dirname(options.outputPath), { recursive: true });
+
+    // Generous ceiling against a hang, scaled to the source (re-encoding is
+    // slower than real time on weak machines), not an expected duration.
+    const timeoutMs = Math.min(6 * 3600_000, 15 * 60_000 + options.source.durationSeconds * 8_000);
+
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(ffmpegInstaller.path, args, { cwd: options.workingDirectory, windowsHide: true });
+      let progressBuffer = "";
+      let stderrTail = "";
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        child.kill("SIGKILL");
+        settle(new Error("ffmpeg render timed out"));
+      }, timeoutMs);
+
+      function settle(error: Error | null) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve();
+      }
+
+      options.onProcessStart?.({ cancel: () => child.kill("SIGKILL") });
+
+      child.stdout.on("data", (chunk: Buffer) => {
+        // Only the latest few KB matter for "the most recent out_time".
+        progressBuffer = (progressBuffer + chunk.toString("utf-8")).slice(-4096);
+        const elapsed = extractLatestOutTimeSeconds(progressBuffer);
+        if (elapsed !== null) options.onProgress?.(computeProgressPercent(elapsed, options.source.durationSeconds));
+      });
+
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderrTail = (stderrTail + chunk.toString("utf-8")).slice(-4000);
+      });
+
+      child.on("error", (error) => settle(error));
+
+      child.on("close", (code, signal) => {
+        if (code === 0) {
+          settle(null);
+          return;
+        }
+        settle(
+          Object.assign(new Error(`ffmpeg exited with code ${code ?? signal}`), {
+            code: code ?? undefined,
+            stderr: stderrTail,
+          }),
+        );
+      });
+    }).catch((error: unknown) => {
+      const classified = classifyFfmpegRenderError(error);
+      const nodeError = error as NodeJS.ErrnoException & { stderr?: string };
+      // Diagnostics stay server-side (with the input path, which is ours); never sent to the client.
+      console.error(
+        `[ffmpeg] ${classified.name} while rendering captions for ${videoFilePath}:`,
+        `code=${nodeError.code ?? "unknown"}`,
+        nodeError.stderr ? `stderr=${nodeError.stderr.slice(-1500)}` : `message=${nodeError.message}`,
+      );
+      throw classified;
+    });
   }
 }
 

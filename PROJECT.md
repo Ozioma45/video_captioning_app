@@ -448,6 +448,14 @@ The segmentation engine should eventually support configurable rules such as:
 
 These rules should be configurable rather than hard-coded into the UI.
 
+## Source transcription data vs. final captions
+
+- The **source transcription data** is the word-level timing derived from Whisper's words/tokens (`CaptionDocument.originalWords`). It is preserved and is never altered by segmentation or editing.
+- Whisper's own **segment boundaries are not the final caption boundaries.** They are transcription structure only (whisper.cpp can return whole sentences or 30-second windows) and must not be displayed directly as captions.
+- The final `CaptionDocument.segments` are produced by the application's **caption segmentation engine** from the word-level data.
+- Segmentation **does not change word timestamps**. Each caption keeps its assigned words with their original timing, and the caption's own start and end come from those words.
+- The caption segmentation layer alone determines the displayed caption boundaries.
+
 ---
 
 # 13. Caption Editing

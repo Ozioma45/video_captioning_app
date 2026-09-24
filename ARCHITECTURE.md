@@ -220,7 +220,7 @@ Animation (style-engine.resolve → opacity/scale/color/position per word)
 
 ## 10. Export Architecture
 
-**Recommendation: ASS (Advanced SubStation Alpha) subtitles burned in via FFmpeg's libass filter, generated from `CaptionDocument` + `CaptionStyle` by a pure `subtitle-generator` function.**
+**Recommendation: ASS (Advanced SubStation Alpha) subtitles burned in via FFmpeg's libass filter, generated from `CaptionDocument` + `CaptionStyle` by a pure generator.** *Built in Phase 7 — the as-built details, and where they differ from the sketch below, are in §26.*
 
 Comparison of approaches considered:
 
@@ -568,3 +568,93 @@ Preview strategy clarification: the player streams from `GET /api/videos/[videoI
 **What the data looks like now.** On the captured 40 s recording: 19 captions of 2–7 words / 15–34 characters, each starting within −0.15…+0.16 s of the real speech onset measured from the audio's energy envelope (13 captions that follow a silence). Whisper's per-word times inside continuous speech remain rough (tiny.en model): individual word starts can be a few hundred ms off, and a few words are zero-length.
 
 **Known limits.** The heuristics are English-oriented (the function-word lists). `emphasis` highlighting is still a placeholder. A different or larger whisper model (or DTW alignment) may improve word timing; not attempted.
+
+---
+
+## 26. Phase 7 Implementation Notes — Burned-in Export
+
+### Data flow
+
+```text
+ExportPanel (client)                       POST /api/export  { videoId, captionDocument.segments, styleConfig }
+  current edited captions + style  ───────►  validateExportRequest (allow-list copy, caps, style validation)
+                                              createExportJob → 202 { exportId }
+                                              runExportJob (in-process, not awaited)
+                                                buildCaptionTrack → generateAss → work/captions.ass
+                                                copy bundled TTF(s) → work/fonts/
+                                                ffmpeg (cwd = work/): scale, ass=…, libx264, AAC  → work/render.mp4
+                                                ffprobe + validateExportOutput
+                                                rename → exports/<id>/output.mp4 ; job "completed"
+poll GET /api/export/<id> (1 s)  ◄──────────  exports/<id>/job.json
+Download → GET /api/export/<id>/download  (Range, attachment)
+Cancel   → POST /api/export/<id>/cancel
+```
+
+The client sends the *current* captions and style because the edited `CaptionDocument` lives only in the browser (there is no project persistence yet, and the server-side document is the untouched transcription). The server validates and copies only known fields, and never reads a path or FFmpeg argument from the request. Nothing is transcribed or segmented again: the segments are the final `CaptionDocument.segments` (integration-tested against real whisper.cpp output).
+
+### Rendering strategy: ASS + libass (as §10 recommended), with one event per visual state
+
+ASS/libass was chosen over `drawtext` (one filter node per word/segment does not scale to thousands of captions and cannot express per-word color cleanly), over SRT/VTT via `subtitles=` (no per-word styling, animation or box), and over browser/canvas capture (needs a server path anyway, unreliable for long files). It gives one compact text file, one filter pass, position/outline/shadow/box/fade/move/scale tags, and streams regardless of video length. The FFmpeg build this project ships (`@ffmpeg-installer/ffmpeg`, a 2018 build with libass, freetype, fontconfig, x264) was verified to have all of it.
+
+Word highlighting is **not** done with ASS karaoke tags (`\k` keeps a word highlighted after it is spoken; the preview highlights a word only while it is being spoken). Instead each caption becomes one *event per state* — "word i highlighted" for the word's real `[start,end)`, "nothing highlighted" for the gaps — so the highlight is on exactly as long as the timestamps say. State events never overlap, and only the first event of a segment plays the entrance animation.
+
+### Preview / export parity model — one source of truth per decision
+
+| Decision | Shared code | Used by |
+|---|---|---|
+| Which segment is visible, when | `[start,end)`; overlapping segments cut at the next start (= `findActiveSegment`) | preview: `findActiveSegment`; export: `buildCaptionTrack` |
+| Plain text vs highlighted words (stale / missing / malformed word timing → plain) | `resolveCaptionDisplay` | both |
+| Which word is highlighted when | real word timestamps, start-inclusive / end-exclusive, none between words (= `findActiveWord`) | both |
+| Geometry | 1080-line reference px, 6% side padding, `offsetPercent` of height, max width incl. padding | preview: `styleToCss` (cqh units); export: `computeCaptionLayout` (px from actual video size) |
+
+`buildCaptionTrack` is tested against the preview functions at every 13 ms over a synthetic document for all five presets. Geometry is *not* shared code (CSS vs. numbers) and is kept in agreement by measurement, below. **When `styleToCss` changes, `computeCaptionLayout` must change with it.** Preview quirk mirrored deliberately: when a caption is vertically centered the preview frame drops its side padding too.
+
+Everything derives from the actual source frame size (display size after rotation, made even for H.264) — never a viewport. Sizes scale by `height/1080`; ASS font size = CSS px ÷ 0.706 (libass sizes the line box, CSS the em; measured on Inter with this FFmpeg build).
+
+### Measured parity (real videos, through the UI)
+
+For 42 s test videos with real whisper.cpp captions: the browser preview (screenshot of the video element at the export's resolution) and the exported frame at the same timestamp were compared programmatically — ink bounding box (center, size) and the centroid of highlight-colored pixels — at 12 timestamps per style (segment middles, word middles, a gap, after the last caption). 16:9 (all five styles): 60/60 within tolerance, typically center within ±0.5 % and size within ±1–2 % of the frame; text positions verified for bottom/center (default), top-left and bottom-right. 9:16 and 1:1: Classic and Karaoke pass everywhere; the failures are Dynamic and Podcast on multi-line captions (see limitations). Tolerances: center ≤ 2 % (x) / 2.5 % (y), size ≤ 5 % / 3.5 %, highlight centroid ≤ 3.5 %.
+
+### Styles in the export
+
+- **Classic** — plain text, outline (CSS stroke is centered, ASS outline is outward: half width), shadow offset, bottom/8 %, no motion.
+- **Karaoke** — per-word states as above, highlight color on the spoken word; the 80 ms `wordHighlight` color *transition* becomes an instant switch.
+- **Dynamic** — uppercase (applied to the text: ASS has no text-transform), 900 weight, centered, per-word highlight, `pop` entrance = ASS `\fad` + scale 85 %→100 %. The preview also scales the *active word* by 1.12 (CSS transform, no reflow); that is not exported (ASS scaling would reflow the line).
+- **Highlight** — the segment's last word in the highlight color (same placeholder as the preview; no keyword data exists).
+- **Podcast** — semi-transparent box (ASS BorderStyle 3 on a separate layer under the text; alpha = background opacity; box padding = the style's padding) + 150 ms fade.
+
+### Known parity limitations (real, measured or inherent)
+
+1. **Box shape.** libass boxes are rectangles with square corners (no `radiusPx`), and multi-line captions get one box *per line* (widths follow each line) instead of one block rectangle. On portrait/square videos with wrapped Podcast captions the box width differed by −7…−29 % of frame width.
+2. **Line spacing.** libass cannot set line height; multi-line captions use the font's natural spacing (≈1.4× size) instead of the style's `lineHeight` (1.1–1.35). A 3-line Dynamic caption on a 9:16 video came out 4–8 % of the frame height taller.
+3. **Shadow blur** is ignored (only the offset distance is drawn); a blur-only shadow (distance 0) does not export.
+4. **Animation.** `pop` scales about the caption's anchor, not the block center; the active-word scale (Dynamic) and the `wordHighlight` color transition are not exported; entrance animations run on the first state event only, so an animation longer than that event is cut short; `slide` uses `\move` (implemented and unit-tested, no preset uses it, not visually verified).
+5. **Fonts.** Only Inter, latin glyphs, six weights. The `system-*` preview fonts export as Inter (the panel says so). Non-Latin text falls back to whatever libass finds — not bundled, not verified.
+6. **Wrap sensitivity.** Line breaks are computed by two different engines (CSS greedy vs. libass `WrapStyle 1` greedy); a caption within a few percent of the maximum width can break at a different word.
+7. **Timing resolution.** ASS is centiseconds (±5 ms); video is frames (40 ms at 25 fps), so a highlight shorter than a frame may be skipped and word boundaries land on the nearest frame.
+8. `capitalize` approximates CSS (first letter of each word); square pixels are assumed (non-square SAR untested).
+
+### Fonts
+
+libass cannot read the browser's woff2 variable font. `assets/fonts/Inter-W{400…900}.ttf` are static Inter instances (SIL OFL 1.1) generated from `@fontsource/inter` by `scripts/build-export-fonts.mjs` (unwraps WOFF, rewrites the `name` table so each weight is its own family, "Inter W600"). They are committed, copied into each job's work directory, and passed via `fontsdir` — no network, no system fonts, same on every machine. They are read from `<cwd>/assets/fonts`; a deployment that runs from elsewhere (or a standalone build) must ship that directory. A missing font fails the job with a clear message.
+
+### Jobs, progress, cancellation, cleanup
+
+- **Lifecycle:** `queued → processing → completed | failed | cancelled` (`ExportJob`, its own status vocabulary). One JSON file per job at `exports/<id>/job.json`; in-process, no queue (V1). One export at a time (409 `export_in_progress` otherwise) because re-encoding saturates the machine.
+- **Progress** is FFmpeg's real `-progress pipe:1` `out_time` over the source duration, capped at 99 %. 100 % is written only after validation. Verified: 72 distinct monotonic values on a 20-minute export.
+- **Validation before completion:** output exists and is non-empty, H.264 in an MP4 container, audio present iff the source had audio, exact frame size, duration within max(1 s, 2 %). Otherwise the job fails and the output is discarded — FFmpeg exiting 0 is not enough.
+- **Cancellation:** `POST /api/export/<id>/cancel` kills the FFmpeg process (registry on `globalThis`, so the route that starts a job and the one that cancels it see the same map), the runner records `cancelled` and cleans up. A cancel that arrives before the process starts, or for a stale record after a server restart, is handled. Verified against a real running FFmpeg (test) and from the UI on a 20-minute export (job cancelled, no `output.mp4`, no `work/`, no ffmpeg process).
+- **Cleanup:** the job's `work/` directory (ASS, font copies, partial render) is removed in `finally` on success, failure and cancellation; a non-completed job never leaves `output.mp4`. The source video and the caller's data are only read. Finished exports are kept under `exports/<id>/` — no retention/expiry policy yet.
+- **Output:** MP4, H.264 (`libx264 -preset veryfast -crf 20 -pix_fmt yuv420p`, +faststart), audio stream-copied when already AAC, else AAC 192 k; the source's audio track is used (never the transcription WAV). Source frame rate preserved; odd sizes are scaled down by ≤1 px.
+
+### Download
+
+`GET /api/export/<id>/download` serves only a `completed` job, from a path derived from the validated UUID, as a stream (no buffering) with `Content-Length`, single-range `206` support, `Content-Disposition: attachment` (ASCII fallback + UTF-8 name derived from the original filename), `X-Content-Type-Options: nosniff`.
+
+### Security
+
+UUID validation on every id; storage keys re-checked against the storage root; request fields copied through an allow-list with size/number caps; style validated by `validateCaptionStyle`; FFmpeg only via `spawn` with an argument array (`buildRenderArgs`), server-generated paths as single argv elements, `-vf` from constants and integers, cwd = job directory so the filter references files by relative name; caption text only ever inside the .ass file, escaped (`{ } \` and newlines — behavior verified against the libass build, including a word-joiner trick for backslashes); client-visible errors carry no paths or stderr (`detail` is stripped from the API response and never contains paths).
+
+### Long-form
+
+FFmpeg reads the source as a file and writes the output as a file; Node never holds video bytes and never renders frames; the caption document is turned into one ASS file (proportional to caption/word count — 60,000 words generate in well under 3 s in a unit test). Actually run: a 19.9-minute 1280×720 video (2,820 words, 564 captions from real whisper.cpp) exported with Karaoke in 76 s (15.8× real time), server memory 567 → 580 MB, output 16.1 MB; captions verified in frames at 25 %, 50 % and 90 % of the file. **A 2-hour / 2 GB export was not run.** The render timeout scales with duration (15 min + 8 s per source second, ≤ 6 h); untested beyond 20 minutes, and progress polling/job state assume a process that stays up (a server restart mid-render loses the render).

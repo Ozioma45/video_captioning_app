@@ -151,22 +151,21 @@ Each phase should be built, tested, and verified before moving to the next. Do n
 
 ## Phase 7 — Export
 
-**Objective**: A user can render and download a real captioned MP4.
+**Objective**: A user can render and download a real captioned MP4 that matches the preview as closely as libass allows.
 
-**Features**:
-- `domain/subtitle-generator` (CaptionDocument + CaptionStyle → ASS content).
-- FFmpeg render invocation (libass burn-in + encode) via `VideoProcessor.render`.
-- `ExportJob` model + job runner integration, with real progress via FFmpeg `-progress`.
-- Export UI: trigger, progress, success (download link), and failure states.
-- Failure handling that leaves source video/transcript/style untouched.
+**Actually implemented** (details and measurements: ARCHITECTURE.md §26):
+- `domain/export-engine/` — pure, tested: `buildCaptionTrack` (final segments + style → timed states, reusing the preview's `resolveCaptionDisplay` and word-timing semantics), `computeCaptionLayout` (style + real video size → margins/alignment/sizes), `generateAss`/`escapeAssText`, `validateExportRequest`, export font mapping.
+- `services/video-processing`: `VideoProcessor.render` (FFmpeg burn-in, real `-progress`, cancellable) and the pure `buildRenderArgs`; `parseFfprobeOutput` now reports *display* size for rotated video.
+- `services/export/`: `runExportJob` (ASS → FFmpeg → ffprobe validation → completed), `exportJobStore` (job files + in-process registry), `validateExportOutput`, error mapping.
+- API: `POST /api/export`, `GET /api/export/[id]`, `POST /api/export/[id]/cancel`, `GET /api/export/[id]/download` (Range).
+- UI: an "Export" tab in the right-hand inspector (`components/export/ExportPanel`, `stores/useExportStore`, `features/export/exportClient`) — idle / exporting with real progress + cancel / completed with download / failed / cancelled.
+- Bundled Inter TTFs in `assets/fonts/` + the script that builds them.
 
-**Files/modules likely involved**: `domain/subtitle-generator/*`, `services/video-processing/render.ts`, `app/api/render/route.ts`, `features/export/*`.
+**Explicitly not built**: SRT/VTT, bitrate/codec/resolution/fps controls, a job queue, retention/cleanup of finished exports, a 2-hour verification run, rounded/single-block Podcast boxes and real line spacing (libass limits — see §26), non-Inter fonts.
 
-**Dependencies**: Phases 5 and 6 (needs finalized style + a validated preview experience to build confidence they'll match).
+**Testing**: unit and integration tests for the engine, args, validation, job lifecycle (real FFmpeg in a temp storage root: success, portrait/square/odd, MOV/WebM, no-audio, stale words, Karaoke highlight in real frames, cancellation of a running render, FFmpeg failure, missing font, FFmpeg-exit-0-but-invalid-output), and the four routes (validation, traversal, Range, headers). Real-browser workflow (upload → real transcription → edit → style → export via the UI → download → compare with the preview), 16:9 / 9:16 / 1:1, and a 20-minute export with a UI cancel.
 
-**Testing requirements**: Export a short video and a long (30+ min) video end to end; verify the output file plays correctly, audio is intact, captions are legible and correctly timed, and aspect ratio/resolution match the source; deliberately trigger a failure (e.g. malformed input) and verify the project remains intact.
-
-**Definition of done**: A real captioned MP4 can be exported and downloaded for both a short and a long video, matching the preview, with honest progress and safe failure handling.
+**Definition of done**: A real captioned MP4 is produced from the edited captions and selected style, validated, downloadable; progress is real; cancel and failure leave nothing behind and never touch the source.
 
 ---
 

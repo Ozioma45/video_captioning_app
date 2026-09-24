@@ -7,6 +7,18 @@ export interface FfprobeStream {
   width?: number;
   height?: number;
   r_frame_rate?: string;
+  /** Older ffprobe builds report display rotation as a stream tag... */
+  tags?: { rotate?: string };
+  /** ...newer ones as display-matrix side data. */
+  side_data_list?: Array<{ rotation?: number | string }>;
+}
+
+/** Display rotation in degrees, normalized to 0/90/180/270 (0 when absent or unparsable). */
+function displayRotation(stream: FfprobeStream): number {
+  const raw = stream.tags?.rotate ?? stream.side_data_list?.find((entry) => entry.rotation !== undefined)?.rotation;
+  const degrees = Number(raw);
+  if (!Number.isFinite(degrees)) return 0;
+  return ((Math.round(degrees / 90) * 90) % 360 + 360) % 360;
 }
 
 export interface FfprobeFormat {
@@ -55,10 +67,16 @@ export function parseFfprobeOutput(raw: FfprobeOutput): ProbedVideoInfo {
 
   const durationSeconds = Number(raw.format?.duration ?? 0);
 
+  // Width/height are the DISPLAY size: a phone video coded 1920x1080 with a
+  // 90/270 degree rotation plays (and is exported by FFmpeg) as 1080x1920.
+  const swapped = displayRotation(videoStream) % 180 === 90;
+  const codedWidth = videoStream.width ?? 0;
+  const codedHeight = videoStream.height ?? 0;
+
   return {
     durationSeconds: Number.isFinite(durationSeconds) ? durationSeconds : 0,
-    width: videoStream.width ?? 0,
-    height: videoStream.height ?? 0,
+    width: swapped ? codedHeight : codedWidth,
+    height: swapped ? codedWidth : codedHeight,
     frameRate: parseFrameRate(videoStream.r_frame_rate),
     videoCodec: videoStream.codec_name ?? null,
     hasAudio: audioStream !== undefined,

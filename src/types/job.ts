@@ -7,7 +7,6 @@
  */
 
 import type { ProcessingStage, ProcessingError } from "./processing";
-import type { CaptionStyleConfig } from "./style";
 
 export type JobId = string;
 
@@ -26,17 +25,32 @@ export interface TranscriptionJob extends BaseJob {
   captionDocumentId: string | null;
 }
 
-export interface RenderingJob extends BaseJob {
-  type: "rendering";
-  captionDocumentId: string;
-  styleConfig: CaptionStyleConfig;
-  outputPath: string | null;
-}
+export type ExportStatus = "queued" | "processing" | "completed" | "failed" | "cancelled";
 
-export interface ExportJob extends BaseJob {
+/**
+ * Burned-in caption export (Phase 7). Deliberately its own status
+ * vocabulary — an export can be cancelled and is queued before it runs,
+ * neither of which the transcription `ProcessingStage` models. Only
+ * lightweight state lives here: never the caption document, the video, or
+ * the rendered file (see ARCHITECTURE.md §26).
+ */
+export interface ExportJob {
+  id: JobId;
   type: "export";
-  renderingJobId: string;
+  videoId: string;
+  status: ExportStatus;
+  /** 0-100 from FFmpeg's real `-progress` output; null until FFmpeg reports. 100 only after the output is validated. */
+  progressPercent: number | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Wall-clock start/end of the render, for elapsed time. */
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: ProcessingError | null;
+  /** Set once the rendered file has been validated. */
+  output: { filename: string; sizeBytes: number; durationSeconds: number } | null;
+  /** Application download URL (never a filesystem path); set when completed. */
   downloadUrl: string | null;
 }
 
-export type Job = TranscriptionJob | RenderingJob | ExportJob;
+export type Job = TranscriptionJob | ExportJob;

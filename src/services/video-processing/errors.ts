@@ -54,3 +54,20 @@ export function classifyFfmpegExecError(error: unknown): FfmpegUnavailableError 
   }
   return new AudioExtractionFailedError(error);
 }
+
+/** ffmpeg ran but failed while burning captions in (Phase 7). `stderrTail` is server-side diagnostics only. */
+export class RenderFailedError extends Error {
+  readonly stderrTail?: string;
+  constructor(cause?: unknown, stderrTail?: string) {
+    super("ffmpeg could not render the captioned video");
+    this.name = "RenderFailedError";
+    this.cause = cause;
+    this.stderrTail = stderrTail;
+  }
+}
+
+/** Same classification, for ffmpeg's caption render step. */
+export function classifyFfmpegRenderError(error: unknown): FfmpegUnavailableError | RenderFailedError {
+  if (isSpawnFailure(error)) return new FfmpegUnavailableError(error);
+  return new RenderFailedError(error, (error as { stderr?: string } | undefined)?.stderr);
+}

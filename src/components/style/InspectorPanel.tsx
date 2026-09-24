@@ -2,21 +2,23 @@
 
 import { useState } from "react";
 
+import { ExportPanel } from "@/components/export/ExportPanel";
 import { VideoMetadataPanel } from "@/components/video-player/VideoMetadataPanel";
 import { cn } from "@/lib/utils";
 import type { Video } from "@/types";
 import { CaptionStyleControls } from "./CaptionStyleControls";
 import { CaptionStyleSelector } from "./CaptionStyleSelector";
 
-type Tab = "info" | "style";
+type Tab = "info" | "style" | "export";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "info", label: "Info" },
   { id: "style", label: "Style" },
+  { id: "export", label: "Export" },
 ];
 
 /**
- * Right-hand inspector: video information and caption styling as two tabs
+ * Right-hand inspector: video information, caption styling and export as tabs
  * (DESIGN_SYSTEM.md §7 — one primary side-panel context at a time). Styling
  * lives here, not in the bottom workspace, so the caption editor keeps its
  * full width (Phase 5 brief §23). Style controls scroll inside the panel
@@ -27,7 +29,7 @@ export function InspectorPanel({ video }: { video: Video }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div role="tablist" aria-label="Inspector" className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+      <div role="tablist" aria-label="Inspector" className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
         {TABS.map((item) => (
           <button
             key={item.id}
@@ -65,6 +67,7 @@ export function InspectorPanel({ video }: { video: Video }) {
           <CaptionStyleControls />
         </div>
       )}
+      {tab === "export" && <ExportPanel video={video} />}
     </div>
   );
 }
