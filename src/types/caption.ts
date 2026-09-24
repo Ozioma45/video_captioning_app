@@ -52,6 +52,12 @@ export interface SegmentationRules {
    * treated as a natural pause — a preferred segment boundary (Phase 4).
    */
   pauseThresholdSeconds: number;
+  /**
+   * A caption stays visible up to this long after its last word ends, but
+   * never past the next caption's start — so it doesn't vanish the instant
+   * the word ends, without bridging real silence.
+   */
+  maxHoldSeconds: number;
 }
 
 export interface CaptionDocument {

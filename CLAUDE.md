@@ -46,6 +46,8 @@ These rules are permanent and apply to all future work on this project, across a
 
 - **Playback-derived state is derived, not stored.** The active caption/word are computed from `(currentTime, segments)` by the pure functions in `domain/caption-engine/captionLookup.ts` — never kept in a store where seeking could leave them stale. Components subscribe with selectors that return the derived object (so a per-frame time update re-renders them only when it changes), and `currentTime` is written to the playback store from one place only (`VideoPlayer`'s sync effect). Caption times are seconds everywhere.
 
+- **Provider segments are not display captions.** `CaptionDocument.segments` is always produced by `segmentCaptions` from the provider's words; a caption's timing comes from its own words. Never pass `-nt` to whisper.cpp (it destroys timestamps). When a caption looks wrong in the preview, inspect the real transcription data (words + timestamps) before touching the renderer — the overlay only shows what it is given.
+
 ## Editor UI patterns
 
 - **Commit editable-field changes on blur/Enter, not per keystroke.** Keep the live value in local component state; only call into the store (and from there, a pure domain function) when the user finishes editing. Escape reverts to the last committed value. Dispatching on every keystroke means a full store update + re-render sweep per character — for a caption list, a style panel, or anything else with many editable items, that adds up.

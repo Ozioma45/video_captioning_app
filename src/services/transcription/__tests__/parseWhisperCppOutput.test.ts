@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { MalformedTranscriptionResultError } from "../errors";
@@ -75,7 +76,7 @@ describe("parseWhisperCppOutput", () => {
     });
     const allWords = result.segments.flatMap((s) => s.words.map((w) => w.text));
     expect(allWords).not.toContain("<|endoftext|>");
-    expect(allWords).toEqual(["Thanks", "for", "watching", "."]);
+    expect(allWords).toEqual(["Thanks", "for", "watching."]);
   });
 
   it("throws MalformedTranscriptionResultError when the transcription array is missing", () => {
@@ -110,5 +111,21 @@ describe("parseWhisperCppOutput", () => {
     });
     expect(result.segments[0].words).toEqual([]);
     expect(result.segments[0].text).toBe("no token breakdown here");
+  });
+
+  it("merges sub-word tokens and attached punctuation into whole words (real whisper.cpp output)", () => {
+    const fixture = JSON.parse(readFileSync(new URL("./fixtures/whisper-cpp-speech-40s.json", import.meta.url), "utf-8"));
+    const result = parseWhisperCppOutput(fixture);
+    const words = result.segments.flatMap((s) => s.words);
+    const texts = words.map((w) => w.text);
+    // " tim" + "est" + "amps" + "," is one word, and "capt" + "ions" is one word
+    expect(texts).toContain("timestamps,");
+    expect(texts).toContain("captions");
+    expect(texts).not.toContain("tim");
+    expect(texts).not.toContain(",");
+    expect(texts).not.toContain(".");
+    // attached punctuation must not stretch a word across the following silence
+    const video = words.find((w) => w.text === "video.")!;
+    expect(video.end).toBeCloseTo(16.28, 2);
   });
 });

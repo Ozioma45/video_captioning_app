@@ -477,7 +477,7 @@ Preview strategy clarification: the player streams from `GET /api/videos/[videoI
 
 **Normalization boundary.** `domain/caption-engine/normalizeTranscription.ts` is the first real file in `domain/` (exactly where DEVELOPMENT_PLAN's Phase 3 row said it would land), and is provider-agnostic: it consumes the already-normalized `TranscriptionResult` type, never whisper-specific shapes. It also carries a fallback most providers won't need: if a future provider returns segment-level text with no word breakdown at all, words are evenly interpolated across the segment and marked `approximate: true` rather than the document failing outright — the same "disclose, don't fake" principle as elsewhere.
 
-**Caption segmentation stays out of scope.** Per the Phase 3 brief, whisper.cpp's own segment boundaries are used as-is for `CaptionDocument.segments` — no character-count/line-break rule engine runs yet. `domain/caption-engine/segmentationRules.ts` holds only descriptive defaults for the `SegmentationRules` type Phase 4's real re-segmentation engine will consume.
+**Caption segmentation (superseded — see §25).** Phase 3 originally used whisper.cpp's own segment boundaries as-is for `CaptionDocument.segments`. Manual use of the Phase 6 preview showed that was wrong: the boundaries were whole 30 s windows. `normalizeTranscription` now flattens the provider's words and runs `segmentCaptions`.
 
 **In-process job runner, not a queue.** `runTranscriptionJob` (`services/jobs/`) follows the same JSON-file-per-record pattern Phase 2 established for videos (`videoRecordStore`) — one file per `TranscriptionJob`, no database (Unresolved Decision #14, still Option A). The route handler (`POST /api/transcribe`) does not await it; the client polls `GET /api/jobs/[jobId]`. A small in-memory `Map<jobId, CancellableProcessHandle>` (`transcriptionJobStore.ts`) exists purely as a seam for a future cancel endpoint — no cancellation UI or queue was built, matching the brief's "avoid an architecture where the subprocess can't eventually be terminated" without building the feature itself.
 
@@ -544,3 +544,27 @@ Preview strategy clarification: the player streams from `GET /api/videos/[videoI
 **Highlight style.** `highlightMode: "emphasis"` has no keyword data behind it. It emphasizes the segment's last word (same as the style picker sample) — a placeholder, not keyword detection.
 
 **Phase 7 remaining.** ASS generation and burn-in, font provisioning for libass, and a preview-vs-export parity check.
+
+---
+
+## 25. Caption Segmentation & Timing Quality (post-Phase 6 correction)
+
+**Symptom.** In the Phase 6 preview, captions were paragraph-sized and drifted from the speech (up to ~11 s late near the end of a 40 s clip). The overlay was correctly rendering the data it was given; the data was bad.
+
+**Root cause (two defects, both before the caption model).**
+1. `WhisperCppTranscriptionProvider` passed `-nt` (`--no-timestamps`). That disables whisper's timestamp tokens: the output collapsed into one segment per 30 s window and word times drifted badly (in the captured clip, "Thanks" was stamped 47.05 s; it is spoken at ~36.2 s; on the earlier 12 s clip every word after "pipeline" was stamped 11.88 s). `-ojf` only writes a JSON file, so nothing needed suppressing. Removed.
+2. `normalizeTranscription` copied the provider's segments straight into `CaptionDocument.segments` (`segmentCaptions`, built in Phase 4, was never called in production), so one caption could be an entire 30 s window.
+
+**Also fixed: tokens are not words.** whisper.cpp reports BPE tokens. `parseWhisperCppOutput` now merges a token that doesn't start with a space into the previous word (" tim"+"est"+"amps" → "timestamps") and attaches punctuation ("video" + "." → "video."). Attached punctuation does not extend the word's end time: whisper stamps it with the segment boundary, which would hold the word across the following silence.
+
+**New pipeline.** `whisper words → flatten → segmentCaptions(words, DEFAULT_SEGMENTATION_RULES) → CaptionSegment[]`. Provider segments are transcription structure only. `originalWords` is unchanged and remains the source for "reset".
+
+**Algorithm.** Dynamic programming over the whole word sequence, O(n·maxWords) (60,000 words < 2 s in a unit test). Hard limits: words, characters, duration, and no silence longer than `max(1.5 s, 3 × pauseThreshold)` inside a caption. Within them it minimizes a cost that prefers breaking after sentence-ending punctuation, at a pause (more so for longer pauses), after a comma; avoids ending on a dangling function word ("the", "to", "and", "every"…); prefers starting on a clause word ("and", "but", "which"); penalizes 1- and 2-word captions and sub-minimum durations; and prefers evenly sized captions. A one-word sentence ("Yes.") is folded into a neighbor rather than flashed alone. A global optimum avoids the greedy failure of a full caption followed by an orphan.
+
+**Defaults** (`segmentationRules.ts`): 9 words, 42 characters (1 line), 4.5 s, minimum 0.8 s (soft), pause 0.5 s, hold 0.3 s.
+
+**Timing.** `segment.startTime = words[0].startTime`; `endTime = last word's end`, extended by up to `maxHoldSeconds` but never past the next caption's start. The final caption is not held (it could run past the end of the video). Word timings are never altered, and `text` is always built from the segment's own words.
+
+**What the data looks like now.** On the captured 40 s recording: 19 captions of 2–7 words / 15–34 characters, each starting within −0.15…+0.16 s of the real speech onset measured from the audio's energy envelope (13 captions that follow a silence). Whisper's per-word times inside continuous speech remain rough (tiny.en model): individual word starts can be a few hundred ms off, and a few words are zero-length.
+
+**Known limits.** The heuristics are English-oriented (the function-word lists). `emphasis` highlighting is still a placeholder. A different or larger whisper model (or DTW alignment) may improve word timing; not attempted.

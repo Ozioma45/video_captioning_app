@@ -41,6 +41,40 @@ function msToSeconds(ms: number | undefined): number {
   return typeof ms === "number" && Number.isFinite(ms) ? ms / 1000 : 0;
 }
 
+const PUNCTUATION_ONLY = /^[^\p{L}\p{N}]+$/u;
+
+/**
+ * whisper.cpp reports BPE *tokens*, not words: "timestamps" arrives as
+ * " tim" + "est" + "amps", and punctuation as its own token ("." with the
+ * segment's end time). A token whose raw text starts with a space begins a
+ * new word; one that doesn't continues the previous word (sub-word piece
+ * or attached punctuation). Merging gives one `CaptionWord` per spoken
+ * word. Attached punctuation never extends the word's end time — whisper
+ * stamps it with the segment boundary, which would make the word appear
+ * to be held through the following silence.
+ */
+function mergeTokensIntoWords(tokens: WhisperCppToken[]): TranscriptionWord[] {
+  const words: TranscriptionWord[] = [];
+  for (const token of tokens) {
+    const raw = token.text ?? "";
+    const tokenText = raw.trim();
+    if (!tokenText || SPECIAL_TOKEN_PATTERN.test(tokenText)) continue;
+
+    const start = msToSeconds(token.offsets?.from);
+    const end = msToSeconds(token.offsets?.to);
+    const previous = words[words.length - 1];
+    const continuesPrevious = previous !== undefined && !/^\s/.test(raw);
+
+    if (continuesPrevious) {
+      previous.text += tokenText;
+      if (!PUNCTUATION_ONLY.test(tokenText)) previous.end = Math.max(previous.end, end);
+    } else {
+      words.push({ text: tokenText, start, end });
+    }
+  }
+  return words;
+}
+
 export function parseWhisperCppOutput(raw: WhisperCppOutput): TranscriptionResult {
   if (!raw || !Array.isArray(raw.transcription)) {
     throw new MalformedTranscriptionResultError("whisper.cpp output is missing a transcription array");
@@ -55,17 +89,7 @@ export function parseWhisperCppOutput(raw: WhisperCppOutput): TranscriptionResul
     const end = msToSeconds(segment.offsets?.to);
     const text = (segment.text ?? "").trim();
 
-    const words: TranscriptionWord[] = (segment.tokens ?? [])
-      .map((token): TranscriptionWord | null => {
-        const tokenText = (token.text ?? "").trim();
-        if (!tokenText || SPECIAL_TOKEN_PATTERN.test(tokenText)) return null;
-        return {
-          text: tokenText,
-          start: msToSeconds(token.offsets?.from),
-          end: msToSeconds(token.offsets?.to),
-        };
-      })
-      .filter((word): word is TranscriptionWord => word !== null);
+    const words = mergeTokensIntoWords(segment.tokens ?? []);
 
     if (!text && words.length === 0) {
       throw new MalformedTranscriptionResultError(`whisper.cpp segment ${index} has no text and no tokens`);

@@ -1,0 +1,823 @@
+{
+ "result": {
+  "language": "en"
+ },
+ "transcription": [
+  {
+   "text": " Hello everyone, and welcome back to the channel. Today we are going to talk about how we are building a caption editor for long videos, and why the timing of every single word really matters. First, we upload the video. Then we extract the audio, and we run the transcription. Yes. The result is a list of words with timestamps, which we group into short readable captions that follow the speaker,",
+   "offsets": {
+    "from": 0,
+    "to": 30000
+   },
+   "tokens": [
+    {
+     "text": " Hello",
+     "offsets": {
+      "from": 160,
+      "to": 430
+     }
+    },
+    {
+     "text": " everyone",
+     "offsets": {
+      "from": 430,
+      "to": 1000
+     }
+    },
+    {
+     "text": ",",
+     "offsets": {
+      "from": 1290,
+      "to": 1290
+     }
+    },
+    {
+     "text": " and",
+     "offsets": {
+      "from": 1420,
+      "to": 1550
+     }
+    },
+    {
+     "text": " welcome",
+     "offsets": {
+      "from": 1550,
+      "to": 2130
+     }
+    },
+    {
+     "text": " back",
+     "offsets": {
+      "from": 2220,
+      "to": 2510
+     }
+    },
+    {
+     "text": " to",
+     "offsets": {
+      "from": 2510,
+      "to": 2680
+     }
+    },
+    {
+     "text": " the",
+     "offsets": {
+      "from": 2680,
+      "to": 2860
+     }
+    },
+    {
+     "text": " channel",
+     "offsets": {
+      "from": 3550,
+      "to": 3550
+     }
+    },
+    {
+     "text": ".",
+     "offsets": {
+      "from": 3550,
+      "to": 3810
+     }
+    },
+    {
+     "text": " Today",
+     "offsets": {
+      "from": 3810,
+      "to": 4240
+     }
+    },
+    {
+     "text": " we",
+     "offsets": {
+      "from": 4410,
+      "to": 4410
+     }
+    },
+    {
+     "text": " are",
+     "offsets": {
+      "from": 4550,
+      "to": 4670
+     }
+    },
+    {
+     "text": " going",
+     "offsets": {
+      "from": 4670,
+      "to": 5100
+     }
+    },
+    {
+     "text": " to",
+     "offsets": {
+      "from": 5100,
+      "to": 5270
+     }
+    },
+    {
+     "text": " talk",
+     "offsets": {
+      "from": 5270,
+      "to": 5610
+     }
+    },
+    {
+     "text": " about",
+     "offsets": {
+      "from": 5610,
+      "to": 6050
+     }
+    },
+    {
+     "text": " how",
+     "offsets": {
+      "from": 6050,
+      "to": 6310
+     }
+    },
+    {
+     "text": " we",
+     "offsets": {
+      "from": 6310,
+      "to": 6480
+     }
+    },
+    {
+     "text": " are",
+     "offsets": {
+      "from": 6480,
+      "to": 6720
+     }
+    },
+    {
+     "text": " building",
+     "offsets": {
+      "from": 6780,
+      "to": 7430
+     }
+    },
+    {
+     "text": " a",
+     "offsets": {
+      "from": 7430,
+      "to": 7510
+     }
+    },
+    {
+     "text": " caption",
+     "offsets": {
+      "from": 7510,
+      "to": 8120
+     }
+    },
+    {
+     "text": " editor",
+     "offsets": {
+      "from": 8120,
+      "to": 8640
+     }
+    },
+    {
+     "text": " for",
+     "offsets": {
+      "from": 8640,
+      "to": 8900
+     }
+    },
+    {
+     "text": " long",
+     "offsets": {
+      "from": 8900,
+      "to": 8940
+     }
+    },
+    {
+     "text": " videos",
+     "offsets": {
+      "from": 9370,
+      "to": 9770
+     }
+    },
+    {
+     "text": ",",
+     "offsets": {
+      "from": 9770,
+      "to": 9940
+     }
+    },
+    {
+     "text": " and",
+     "offsets": {
+      "from": 9940,
+      "to": 10200
+     }
+    },
+    {
+     "text": " why",
+     "offsets": {
+      "from": 10200,
+      "to": 10460
+     }
+    },
+    {
+     "text": " the",
+     "offsets": {
+      "from": 10460,
+      "to": 10640
+     }
+    },
+    {
+     "text": " timing",
+     "offsets": {
+      "from": 10750,
+      "to": 11230
+     }
+    },
+    {
+     "text": " of",
+     "offsets": {
+      "from": 11240,
+      "to": 11410
+     }
+    },
+    {
+     "text": " every",
+     "offsets": {
+      "from": 11410,
+      "to": 11830
+     }
+    },
+    {
+     "text": " single",
+     "offsets": {
+      "from": 11830,
+      "to": 12090
+     }
+    },
+    {
+     "text": " word",
+     "offsets": {
+      "from": 12360,
+      "to": 12710
+     }
+    },
+    {
+     "text": " really",
+     "offsets": {
+      "from": 12710,
+      "to": 13230
+     }
+    },
+    {
+     "text": " matters",
+     "offsets": {
+      "from": 13680,
+      "to": 13840
+     }
+    },
+    {
+     "text": ".",
+     "offsets": {
+      "from": 13840,
+      "to": 14030
+     }
+    },
+    {
+     "text": " First",
+     "offsets": {
+      "from": 14480,
+      "to": 14530
+     }
+    },
+    {
+     "text": ",",
+     "offsets": {
+      "from": 14530,
+      "to": 14700
+     }
+    },
+    {
+     "text": " we",
+     "offsets": {
+      "from": 14700,
+      "to": 14870
+     }
+    },
+    {
+     "text": " upload",
+     "offsets": {
+      "from": 14870,
+      "to": 15390
+     }
+    },
+    {
+     "text": " the",
+     "offsets": {
+      "from": 15390,
+      "to": 15600
+     }
+    },
+    {
+     "text": " video",
+     "offsets": {
+      "from": 16080,
+      "to": 16080
+     }
+    },
+    {
+     "text": ".",
+     "offsets": {
+      "from": 16340,
+      "to": 16340
+     }
+    },
+    {
+     "text": " Then",
+     "offsets": {
+      "from": 16510,
+      "to": 16690
+     }
+    },
+    {
+     "text": " we",
+     "offsets": {
+      "from": 16690,
+      "to": 16820
+     }
+    },
+    {
+     "text": " extract",
+     "offsets": {
+      "from": 16890,
+      "to": 17470
+     }
+    },
+    {
+     "text": " the",
+     "offsets": {
+      "from": 17470,
+      "to": 17730
+     }
+    },
+    {
+     "text": " audio",
+     "offsets": {
+      "from": 17730,
+      "to": 17900
+     }
+    },
+    {
+     "text": ",",
+     "offsets": {
+      "from": 18310,
+      "to": 18330
+     }
+    },
+    {
+     "text": " and",
+     "offsets": {
+      "from": 18330,
+      "to": 18590
+     }
+    },
+    {
+     "text": " we",
+     "offsets": {
+      "from": 18590,
+      "to": 18760
+     }
+    },
+    {
+     "text": " run",
+     "offsets": {
+      "from": 18760,
+      "to": 19020
+     }
+    },
+    {
+     "text": " the",
+     "offsets": {
+      "from": 19020,
+      "to": 19230
+     }
+    },
+    {
+     "text": " transcription",
+     "offsets": {
+      "from": 19270,
+      "to": 19710
+     }
+    },
+    {
+     "text": ".",
+     "offsets": {
+      "from": 20410,
+      "to": 20670
+     }
+    },
+    {
+     "text": " Yes",
+     "offsets": {
+      "from": 20670,
+      "to": 20930
+     }
+    },
+    {
+     "text": ".",
+     "offsets": {
+      "from": 20930,
+      "to": 21190
+     }
+    },
+    {
+     "text": " The",
+     "offsets": {
+      "from": 21450,
+      "to": 21450
+     }
+    },
+    {
+     "text": " result",
+     "offsets": {
+      "from": 21480,
+      "to": 21920
+     }
+    },
+    {
+     "text": " is",
+     "offsets": {
+      "from": 21920,
+      "to": 21970
+     }
+    },
+    {
+     "text": " a",
+     "offsets": {
+      "from": 22140,
+      "to": 22220
+     }
+    },
+    {
+     "text": " list",
+     "offsets": {
+      "from": 22220,
+      "to": 22570
+     }
+    },
+    {
+     "text": " of",
+     "offsets": {
+      "from": 22570,
+      "to": 22740
+     }
+    },
+    {
+     "text": " words",
+     "offsets": {
+      "from": 23170,
+      "to": 23170
+     }
+    },
+    {
+     "text": " with",
+     "offsets": {
+      "from": 23330,
+      "to": 23520
+     }
+    },
+    {
+     "text": " tim",
+     "offsets": {
+      "from": 23520,
+      "to": 23730
+     }
+    },
+    {
+     "text": "est",
+     "offsets": {
+      "from": 23800,
+      "to": 24040
+     }
+    },
+    {
+     "text": "amps",
+     "offsets": {
+      "from": 24040,
+      "to": 24360
+     }
+    },
+    {
+     "text": ",",
+     "offsets": {
+      "from": 24390,
+      "to": 24550
+     }
+    },
+    {
+     "text": " which",
+     "offsets": {
+      "from": 24550,
+      "to": 24980
+     }
+    },
+    {
+     "text": " we",
+     "offsets": {
+      "from": 24980,
+      "to": 25130
+     }
+    },
+    {
+     "text": " group",
+     "offsets": {
+      "from": 25150,
+      "to": 25580
+     }
+    },
+    {
+     "text": " into",
+     "offsets": {
+      "from": 25580,
+      "to": 25640
+     }
+    },
+    {
+     "text": " short",
+     "offsets": {
+      "from": 26080,
+      "to": 26360
+     }
+    },
+    {
+     "text": " readable",
+     "offsets": {
+      "from": 26360,
+      "to": 27050
+     }
+    },
+    {
+     "text": " capt",
+     "offsets": {
+      "from": 27050,
+      "to": 27400
+     }
+    },
+    {
+     "text": "ions",
+     "offsets": {
+      "from": 27400,
+      "to": 27720
+     }
+    },
+    {
+     "text": " that",
+     "offsets": {
+      "from": 27770,
+      "to": 28090
+     }
+    },
+    {
+     "text": " follow",
+     "offsets": {
+      "from": 28090,
+      "to": 28610
+     }
+    },
+    {
+     "text": " the",
+     "offsets": {
+      "from": 28610,
+      "to": 28840
+     }
+    },
+    {
+     "text": " speaker",
+     "offsets": {
+      "from": 28860,
+      "to": 29320
+     }
+    },
+    {
+     "text": ",",
+     "offsets": {
+      "from": 29760,
+      "to": 30000
+     }
+    },
+    {
+     "text": "<|endoftext|>",
+     "offsets": {
+      "from": 30000,
+      "to": 30000
+     }
+    }
+   ]
+  },
+  {
+   "text": " about ever showing a whole paragraph at once. That is all for today. Thanks for watching, and see you in the next video.",
+   "offsets": {
+    "from": 30000,
+    "to": 60000
+   },
+   "tokens": [
+    {
+     "text": " about",
+     "offsets": {
+      "from": 30160,
+      "to": 31000
+     }
+    },
+    {
+     "text": " ever",
+     "offsets": {
+      "from": 31430,
+      "to": 32560
+     }
+    },
+    {
+     "text": " showing",
+     "offsets": {
+      "from": 32560,
+      "to": 34550
+     }
+    },
+    {
+     "text": " a",
+     "offsets": {
+      "from": 34550,
+      "to": 34830
+     }
+    },
+    {
+     "text": " whole",
+     "offsets": {
+      "from": 34830,
+      "to": 36250
+     }
+    },
+    {
+     "text": " paragraph",
+     "offsets": {
+      "from": 36250,
+      "to": 38810
+     }
+    },
+    {
+     "text": " at",
+     "offsets": {
+      "from": 38810,
+      "to": 39380
+     }
+    },
+    {
+     "text": " once",
+     "offsets": {
+      "from": 39380,
+      "to": 40480
+     }
+    },
+    {
+     "text": ".",
+     "offsets": {
+      "from": 40520,
+      "to": 41370
+     }
+    },
+    {
+     "text": " That",
+     "offsets": {
+      "from": 41370,
+      "to": 42070
+     }
+    },
+    {
+     "text": " is",
+     "offsets": {
+      "from": 42510,
+      "to": 43080
+     }
+    },
+    {
+     "text": " all",
+     "offsets": {
+      "from": 43680,
+      "to": 43930
+     }
+    },
+    {
+     "text": " for",
+     "offsets": {
+      "from": 43930,
+      "to": 44740
+     }
+    },
+    {
+     "text": " today",
+     "offsets": {
+      "from": 44840,
+      "to": 45600
+     }
+    },
+    {
+     "text": ".",
+     "offsets": {
+      "from": 46500,
+      "to": 47050
+     }
+    },
+    {
+     "text": " Thanks",
+     "offsets": {
+      "from": 47050,
+      "to": 48760
+     }
+    },
+    {
+     "text": " for",
+     "offsets": {
+      "from": 48760,
+      "to": 49610
+     }
+    },
+    {
+     "text": " watching",
+     "offsets": {
+      "from": 49610,
+      "to": 51890
+     }
+    },
+    {
+     "text": ",",
+     "offsets": {
+      "from": 51890,
+      "to": 51970
+     }
+    },
+    {
+     "text": " and",
+     "offsets": {
+      "from": 53310,
+      "to": 53310
+     }
+    },
+    {
+     "text": " see",
+     "offsets": {
+      "from": 53340,
+      "to": 54150
+     }
+    },
+    {
+     "text": " you",
+     "offsets": {
+      "from": 54170,
+      "to": 55010
+     }
+    },
+    {
+     "text": " in",
+     "offsets": {
+      "from": 55010,
+      "to": 55580
+     }
+    },
+    {
+     "text": " the",
+     "offsets": {
+      "from": 55580,
+      "to": 56410
+     }
+    },
+    {
+     "text": " next",
+     "offsets": {
+      "from": 56490,
+      "to": 57570
+     }
+    },
+    {
+     "text": " video",
+     "offsets": {
+      "from": 57570,
+      "to": 58920
+     }
+    },
+    {
+     "text": ".",
+     "offsets": {
+      "from": 59000,
+      "to": 60000
+     }
+    },
+    {
+     "text": "<|endoftext|>",
+     "offsets": {
+      "from": 60000,
+      "to": 60000
+     }
+    }
+   ]
+  }
+ ]
+}

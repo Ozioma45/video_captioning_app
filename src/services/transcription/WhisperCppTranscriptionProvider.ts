@@ -71,6 +71,11 @@ export class WhisperCppTranscriptionProvider implements TranscriptionProvider {
   }
 
   private runWhisper(input: TranscriptionInput, outputBasename: string): Promise<void> {
+    // Do NOT pass `-nt` (--no-timestamps): it disables whisper's timestamp
+    // tokens, which collapses the output into one segment per 30 s window
+    // and makes word times drift by many seconds (found 2026-09-24 by
+    // comparing a real 40 s transcription with and without it). `-ojf`
+    // only writes JSON, so nothing needs suppressing.
     const args = [
       "-m",
       WHISPER_MODEL_PATH as string,
@@ -81,7 +86,6 @@ export class WhisperCppTranscriptionProvider implements TranscriptionProvider {
       "-ojf",
       "-of",
       outputBasename,
-      "-nt",
     ];
 
     return new Promise<void>((resolve, reject) => {

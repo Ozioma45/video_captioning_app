@@ -1,6 +1,7 @@
 import { generateId } from "@/lib/id";
-import type { CaptionDocument, CaptionSegment, CaptionWord, TranscriptionResult, TranscriptionSegment } from "@/types";
+import type { CaptionDocument, CaptionWord, TranscriptionResult, TranscriptionSegment } from "@/types";
 import { DEFAULT_SEGMENTATION_RULES } from "./segmentationRules";
+import { segmentCaptions } from "./segmentCaptions";
 import { InsufficientTimestampDataError } from "./errors";
 import { interpolateWordsFromText } from "./interpolateWords";
 
@@ -23,21 +24,13 @@ export function normalizeTranscription(videoId: string, result: TranscriptionRes
     throw new InsufficientTimestampDataError("Transcription result contains no segments");
   }
 
-  const originalWords: CaptionWord[] = [];
-
-  const segments: CaptionSegment[] = result.segments.map((segment) => {
-    const words = segment.words.length > 0 ? mapProviderWords(segment.words) : interpolateApproximateWords(segment);
-
-    originalWords.push(...words);
-
-    return {
-      id: generateId(),
-      startTime: segment.start,
-      endTime: segment.end,
-      text: segment.text,
-      words,
-    };
-  });
+  // The provider's segments are transcription structure (whisper.cpp emits
+  // whole sentences, or 30 s windows), not display captions. Flatten to the
+  // provider's words and let the segmentation engine build the captions;
+  // each caption's timing then comes from its own words.
+  const originalWords: CaptionWord[] = result.segments.flatMap((segment) =>
+    segment.words.length > 0 ? mapProviderWords(segment.words) : interpolateApproximateWords(segment),
+  );
 
   if (originalWords.length === 0) {
     throw new InsufficientTimestampDataError(
@@ -52,7 +45,7 @@ export function normalizeTranscription(videoId: string, result: TranscriptionRes
     language: result.language,
     originalWords,
     segmentationRules: DEFAULT_SEGMENTATION_RULES,
-    segments,
+    segments: segmentCaptions(originalWords, DEFAULT_SEGMENTATION_RULES),
     createdAt: now,
     updatedAt: now,
   };

@@ -39,19 +39,27 @@ describe("normalizeTranscription", () => {
     }
   });
 
-  it("keeps every segment's words attached to that segment, not flattened away", () => {
+  it("builds captions from the flattened words, not from the provider's segments", () => {
     const result: TranscriptionResult = {
       language: "en",
       segments: [
-        { start: 0, end: 1, text: "Hello", words: [{ text: "Hello", start: 0, end: 1 }] },
-        { start: 1, end: 2, text: "World", words: [{ text: "World", start: 1, end: 2 }] },
+        { start: 0, end: 30, text: "Hello there. World again.", words: [
+          { text: "Hello", start: 0, end: 0.5 },
+          { text: "there.", start: 0.5, end: 1 },
+          { text: "World", start: 1.1, end: 1.5 },
+          { text: "again.", start: 1.5, end: 2 },
+        ] },
       ],
     };
 
     const document = normalizeTranscription(videoId, result);
-    expect(document.segments).toHaveLength(2);
-    expect(document.segments[0].words.map((w) => w.text)).toEqual(["Hello"]);
-    expect(document.segments[1].words.map((w) => w.text)).toEqual(["World"]);
+    // provider segment 0-30s must not become a 30 s caption
+    for (const segment of document.segments) {
+      expect(segment.endTime).toBeLessThan(5);
+      expect(segment.startTime).toBe(segment.words[0].startTime);
+    }
+    expect(document.segments.flatMap((s) => s.words.map((w) => w.text))).toEqual(["Hello", "there.", "World", "again."]);
+    expect(document.originalWords.map((w) => w.text)).toEqual(["Hello", "there.", "World", "again."]);
   });
 
   it("interpolates approximate word timing when a segment has text but no word breakdown", () => {
