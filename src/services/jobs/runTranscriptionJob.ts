@@ -5,7 +5,9 @@ import {
   MalformedTranscriptionResultError,
   TranscriptionProcessError,
   WhisperBinaryMissingError,
+  WhisperCancelledError,
   WhisperModelMissingError,
+  WhisperTimeoutError,
   WhisperUnavailableError,
 } from "@/services/transcription/errors";
 import { AudioExtractionFailedError, FfmpegUnavailableError } from "@/services/video-processing/errors";
@@ -52,6 +54,16 @@ function toProcessingError(error: unknown): ProcessingError {
       projectSafe: true,
       detail: error.message,
     };
+  }
+  if (error instanceof WhisperTimeoutError) {
+    return {
+      message: `Transcription took longer than expected (over ${Math.round(error.timeoutMs / 60000)} minutes) and was stopped. Try a shorter clip, or ask an administrator to raise WHISPER_TIMEOUT_MS for longer videos.`,
+      projectSafe: true,
+      detail: error.message,
+    };
+  }
+  if (error instanceof WhisperCancelledError) {
+    return { message: "Transcription was cancelled.", projectSafe: true, detail: error.message };
   }
   if (error instanceof TranscriptionProcessError) {
     return { message: "Transcription failed while processing the audio.", projectSafe: true, detail: error.message };
@@ -137,7 +149,16 @@ export async function runTranscriptionJob(jobId: string): Promise<void> {
     job = await persist(job, { stage: "transcribing", progressPercent: null });
     const result = await whisperCppProvider.transcribe({
       audioFilePath: audioAbsolutePath,
+      durationSeconds: record.metadata.durationSeconds,
+      jobId,
       onProcessStart: (handle) => registerActiveProcess(jobId, handle),
+      // Real progress from whisper.cpp's own `-pp` callbacks (see
+      // parseWhisperProgress.ts) — an honest percentage, not the
+      // indeterminate "transcribing…" state this stage used to be stuck
+      // showing for its whole duration (PROJECT.md §38: never fabricate one).
+      onProgress: (percent) => {
+        void persist(job, { stage: "transcribing", progressPercent: percent });
+      },
     });
     clearActiveProcess(jobId);
 

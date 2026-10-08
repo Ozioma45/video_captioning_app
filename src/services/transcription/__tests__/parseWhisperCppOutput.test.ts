@@ -128,4 +128,77 @@ describe("parseWhisperCppOutput", () => {
     const video = words.find((w) => w.text === "video.")!;
     expect(video.end).toBeCloseTo(16.28, 2);
   });
+
+  it("corrects a token whose reported end precedes its start, rather than producing an invalid-duration word (real whisper.cpp output)", () => {
+    // Captured 2026-10-08 from a real ~17-minute talk, reproduced
+    // identically across two separate transcription runs of the same
+    // video and a third isolated re-run of just this 600s chunk: right
+    // after a ~5s silence, whisper.cpp emitted a run of tokens all
+    // anchored to the same (correct) segment-start `from`, each keeping a
+    // stale, too-early `to` left over from an earlier decode attempt —
+    // until "those" recovers to normal, non-degenerate timing. Left
+    // uncorrected, this produced a `CaptionSegment` with `endTime <
+    // startTime`, which the export validator correctly rejected with "A
+    // caption has invalid timing." — see ARCHITECTURE.md's Export
+    // Validation notes for the full trace.
+    const result = parseWhisperCppOutput({
+      result: { language: "en" },
+      transcription: [
+        {
+          text: " not just their output.",
+          offsets: { from: 351430, to: 353040 },
+          tokens: [
+            { text: " not", offsets: { from: 351430, to: 351650 } },
+            { text: " just", offsets: { from: 351650, to: 351950 } },
+            { text: " their", offsets: { from: 351950, to: 352320 } },
+            { text: " output", offsets: { from: 352320, to: 352770 } },
+            { text: ".", offsets: { from: 352770, to: 353030 } },
+            { text: "[_TT_404]", offsets: { from: 353040, to: 353040 } },
+          ],
+        },
+        {
+          text: " Notice the structural difference between those two approaches.",
+          offsets: { from: 358160, to: 362400 },
+          tokens: [
+            { text: " Notice", offsets: { from: 358160, to: 353880 } },
+            { text: " the", offsets: { from: 358160, to: 354300 } },
+            { text: " structural", offsets: { from: 358160, to: 355700 } },
+            { text: " difference", offsets: { from: 358160, to: 357100 } },
+            { text: " between", offsets: { from: 358160, to: 358080 } },
+            { text: " those", offsets: { from: 358360, to: 358740 } },
+            { text: " two", offsets: { from: 358790, to: 359170 } },
+            { text: " approaches", offsets: { from: 359190, to: 360590 } },
+            { text: ".", offsets: { from: 360590, to: 361010 } },
+            { text: "[_TT_872]", offsets: { from: 361010, to: 361010 } },
+          ],
+        },
+      ],
+    });
+
+    const words = result.segments.flatMap((s) => s.words);
+    expect(words.map((w) => w.text)).toEqual(["not", "just", "their", "output.", "Notice", "the", "structural", "difference", "between", "those", "two", "approaches."]);
+
+    // The invariant the export validator (and segmentCaptions) depends on: never end before start.
+    for (const word of words) expect(word.end).toBeGreaterThanOrEqual(word.start);
+
+    const corrected = words.filter((w) => ["Notice", "the", "structural", "difference", "between"].includes(w.text));
+    expect(corrected).toHaveLength(5);
+    for (const word of corrected) {
+      expect(word.end).toBe(word.start); // collapsed to zero-length, not a fabricated duration
+      expect(word.approximate).toBe(true); // flagged, never silently passed off as exact
+    }
+
+    // The word immediately following the corrected run had clean timing
+    // already and must be left completely alone.
+    const those = words.find((w) => w.text === "those")!;
+    expect(those).toEqual({ text: "those", start: 358.36, end: 358.74 });
+    expect(those.approximate).toBeUndefined();
+
+    // And the segment this produces is exactly what a real `CaptionDocument`
+    // would be built from — start must still come from the segment's own
+    // first word, never acquire a negative duration.
+    const secondSegment = result.segments[1];
+    expect(secondSegment.start).toBeCloseTo(358.16, 2);
+    expect(secondSegment.words[0]).toEqual({ text: "Notice", start: 358.16, end: 358.16, approximate: true });
+  });
 });

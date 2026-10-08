@@ -658,3 +658,130 @@ UUID validation on every id; storage keys re-checked against the storage root; r
 ### Long-form
 
 FFmpeg reads the source as a file and writes the output as a file; Node never holds video bytes and never renders frames; the caption document is turned into one ASS file (proportional to caption/word count — 60,000 words generate in well under 3 s in a unit test). Actually run: a 19.9-minute 1280×720 video (2,820 words, 564 captions from real whisper.cpp) exported with Karaoke in 76 s (15.8× real time), server memory 567 → 580 MB, output 16.1 MB; captions verified in frames at 25 %, 50 % and 90 % of the file. **A 2-hour / 2 GB export was not run.** The render timeout scales with duration (15 min + 8 s per source second, ≤ 6 h); untested beyond 20 minutes, and progress polling/job state assume a process that stays up (a server restart mid-render loses the render).
+
+---
+
+## 27. Whisper Reliability & Video-Stream Fix (2026-09-29)
+
+### Reported symptom
+`whisper.cpp transcription timed out`, the process killed via `SIGKILL`, the transcription job failing with no captions; `GET /api/videos/{id}/stream` logged as taking 57.1 minutes; an uncaught `TypeError: Invalid state: Controller is already closed`; `/api/jobs/{jobId}` still returning 200 while the job ran (expected — polling a still-running job).
+
+### Root cause 1 — the timeout was real code, but genuinely dumb about *why* it fired
+`WHISPER_TIMEOUT_MS` defaulted to a flat 4 hours, computed once at module load with no relationship to the video's own duration, the configured model, or measured throughput. The timer itself was correctly started/cleared (verified by reading the code and by new tests) — the actual defect was **classification**: a timeout produced a plain `Error("whisper.cpp transcription timed out")` with no `.code`, which `classifyWhisperExecError`'s `isSpawnFailure` check (string vs. numeric `.code`) then silently miscategorized as `TranscriptionProcessError` ("whisper.cpp exited with an error while transcribing"). The user never learned it was a timeout, and nothing distinguished it from a cancellation or a real audio-decode failure.
+
+**Fixed**: `WhisperTimeoutError`/`WhisperCancelledError` (`services/transcription/errors.ts`) are now distinct classes, thrown directly from `runManagedWhisperProcess.ts` and never passed through the generic classifier; `runTranscriptionJob.ts` maps each to its own clear, actionable message (`toProcessingError`).
+
+### Root cause 2 — the timeout's number was real but not duration-aware
+`computeWhisperTimeoutMs(audioDurationSeconds)` (`config/whisper.ts`) replaces the flat constant: `overhead + audioDurationSeconds / minSpeedFactor`, clamped to `[WHISPER_TIMEOUT_MIN_MS, WHISPER_TIMEOUT_MAX_MS]`. `WHISPER_TIMEOUT_MS`, if set, still overrides it outright (a fixed, predictable ceiling for a known deployment). Verified live against the real 19.9-minute benchmark video: computed timeout 2,687,600 ms (~44.8 min) against a video that actually finished transcribing in 150,912 ms (~2.5 min, 7.9x realtime) — generous but bounded, not "4 hours no matter what."
+
+### Performance (measured, tiny.en, this dev machine — Intel i7-10610U, 8 logical CPUs)
+278 s real speech sample:
+
+| Configuration | Wall time | Speed |
+|---|---|---|
+| `-t 4` (whisper.cpp's own default) | 49.96 s | 5.6x realtime |
+| `-t 8` | 38.84 s | 7.2x realtime |
+| `-t 8 -bs 1 -bo 1` (near-greedy) | 27.55 s | 10.1x realtime |
+
+All three produced a byte-identical transcript on this sample. `WHISPER_THREADS` now defaults to the logical CPU count (was a hardcoded 4) — free parallelism, no accuracy trade-off, so it *is* the new default. `WHISPER_BEAM_SIZE`/`WHISPER_BEST_OF` remain unset by default (whisper.cpp's own 5/5): beam search is a genuine speed/accuracy trade-off and this sample (clean synthesized speech) doesn't stress the case it helps with, so it stays opt-in, not silently changed. Real 19.9-minute video with real speech and the new defaults: 2.4x–7.9x realtime across several runs (machine load–dependent).
+
+### Root cause 3 — the video stream's Node→Web stream bridge
+`LocalFilesystemStorage.createReadStream` used a bare `Readable.toWeb(fs.createReadStream(...))` handed straight to `new Response(stream)`. `<video>` elements abort their in-flight Range request on every seek — routine, not exceptional — and that specific combination (`Readable.toWeb` + `fs.ReadStream` + consumer cancellation) is a documented Node.js issue: a late `data`/`error`/`close` event can call `enqueue`/`close`/`error` on an already-closed controller, throwing `Invalid state: Controller is already closed` from inside code the route handler never awaits — i.e. a genuine **uncaught, process-level exception**, not a request-scoped failure. This exactly matches the reported symptom. The `57.1min` GET duration was not itself a bug: a non-Range progressive-download request paced by real playback legitimately stays open for the video's own length; what made it dangerous was the complete absence of backpressure in the old bridge — nothing paused the source when the consumer fell behind, so a slow consumer could make the process buffer an unbounded amount of the file.
+
+**Fixed**: `services/storage/nodeStreamToWebStream.ts` (`nodeReadableToWebStream`) replaces the bare bridge: a `closed` guard makes enqueue/close/error idempotent, `cancel()` destroys the source and releases its fd immediately, a genuine read error is surfaced via `controller.error()` only while still live (logged, not thrown, if it arrives after cancellation — and the `'error'` listener itself is deliberately never removed, since Node throws if `'error'` has zero listeners and a destroyed stream can still emit one asynchronously), and real pull-based backpressure (`pause()`/`resume()` gated on `desiredSize`) replaces the old always-flowing mode.
+
+**Verification honesty**: the exact live crash was not reproduced on this Node 24.14.1 build despite real effort (concurrent aborted Range requests, large files, repeated cancellation) — this specific Node version may have already narrowed the race. The fix targets the documented, well-understood root-cause *class* (not a guess), is unit-tested against every failure mode in that class using a fully-controlled fake stream (enqueue-after-close, error-after-cancel, double-close, backpressure), and is tested against a real file for the concrete, checkable proxy for "the fd was actually released": the file can be renamed immediately after cancellation (would fail with EBUSY/EPERM on Windows if the descriptor leaked). A 180-request live abort-storm against the real dev server produced zero crashes and zero `Invalid state` log lines, before and after the fix — the storm alone was inconclusive for proving the original bug, but confirms the fix introduces no regression under the same load.
+
+### Honest progress (UI)
+`CaptionWorkspace` now shows whisper.cpp's own `--print-progress` percentage when it has emitted one (parsed from stderr — see `parseWhisperProgress.ts`), and a live "Xs elapsed" fallback (ticking once a second, `ProcessingState.startedAt`) when it hasn't yet — never a fabricated percentage. Verified live: a fast short clip showed only the elapsed fallback for most of its run then a single real `74%` right before completion; the 19.9-minute video showed real, monotonically increasing percentages throughout (7%, 11%, 20%, … 100%) via `/api/jobs/{id}` polling.
+
+### Files changed
+`config/whisper.ts` (thread/beam/timeout config, `computeWhisperTimeoutMs`), `services/transcription/{errors,buildWhisperArgs,runManagedWhisperProcess,parseWhisperProgress,WhisperCppTranscriptionProvider}.ts`, `services/jobs/runTranscriptionJob.ts` (progress wiring, new error branches), `types/transcription.ts` (`durationSeconds`/`jobId`/`onProgress` on `TranscriptionInput`), `services/storage/{LocalFilesystemStorage,nodeStreamToWebStream}.ts`, `features/captions/CaptionWorkspace.tsx` (honest progress/elapsed UI).
+
+### Known limitations
+`WHISPER_MIN_SPEED_FACTOR`'s default (0.5x) is a judgment call, not a measurement across hardware/models — only tiny.en on one dev CPU was benchmarked. The video-stream fix's real-world crash was not reproduced live (see above). Backpressure is chunk-count-based (the Web Streams default `CountQueuingStrategy`, hwm 1), not byte-based — correct and safe, but not tuned for throughput.
+
+---
+
+## 28. Long-Form Whisper Chunking (2026-10-04)
+
+### Symptom
+A real 56.6-minute video (856 MB, `03.ALEX3.mp4`) timed out after 118 minutes (`whisper.cpp transcription timed out after 7086s`) — §27's duration-aware timeout computed a generous 7086s (~118 min) budget and the transcription still hadn't finished.
+
+### Investigation (all against this exact real video's real audio, same hardware as §27)
+Isolated, independent whisper.cpp runs on slices of the identical extracted audio:
+
+| Slice | Duration | Wall time | Speed |
+|---|---|---|---|
+| start, 3 min | 180s | 26.1s | 6.9x realtime |
+| mid-file, 5 min | 300s | 46.5s | 6.5x realtime |
+| first 20 min (continuous) | 1200s | 243s | 4.9x realtime |
+| first 40 min (continuous) | 2400s | 416s | 5.8x realtime |
+| final 16.5 min (isolated) | 993s | 154s | 6.5x realtime |
+
+Every slice, at every tested duration up to 40 real minutes, transcribed fast with no sign of degradation over the course of a run. Yet one single, uninterrupted invocation covering the full 56.6 minutes never finished in a 118-minute budget — over 10x worse than any sub-range of the identical audio, and worse than the already-pessimistic 0.5x-realtime floor §27's timeout formula assumes. This rules out the audio content, the model, thread count, and simple hardware/thermal explanations (a 40-minute continuous run would have shown thermal throttling if that were the cause; it didn't). The slowdown is specific to a single whisper.cpp invocation running uninterrupted past some point between 40 and 56.6 minutes — consistent with (but not conclusively isolated to) internal state that accumulates across a very long single pass (e.g. growing decoder context/prompt carryover). A full, instrumented reproduction of the exact 56.6-minute failure was not run a second time (prohibitively slow by design — that's the bug); the fix was validated by chunking instead.
+
+### Fix: split long audio into independent chunks
+`WHISPER_CHUNK_DURATION_SECONDS` (default 600s / 10 min — 4x margin under the 40-minute proven-fast ceiling). Audio at or below this duration is transcribed exactly as a single invocation always has (zero behavior change for short/medium videos — most real videos). Longer audio is split via `planAudioChunks` (pure chunk planner) and `wavSlicing.ts` (a small RIFF/WAVE chunk-walking reader + slicer — handles the `LIST`/`INFO` metadata chunk real ffmpeg output includes, not just a bare 44-byte-header assumption), each chunk transcribed as its own fresh, independent whisper.cpp process, and the results merged back into one continuous `TranscriptionResult` by `mergeChunkedTranscriptionResults` — which adds each chunk's start-time offset to its segments' and words' timestamps. No word timing is estimated or re-derived; every timestamp is whisper's own real output, just translated into the full file's timeline (CLAUDE.md "preserve word-level timestamps"). `WhisperCppTranscriptionProvider.transcribe()` orchestrates this; `buildWhisperArgs`, `runManagedWhisperProcess`, progress parsing, and error classification (§27) are reused unchanged per chunk.
+
+**Timeout, now doubly robust for long videos**: each chunk gets its own duration-aware timeout (the same `computeWhisperTimeoutMs` from §27, applied to that chunk's length), AND an overall deadline derived from the full audio's own timeout bounds the whole job — whichever is tighter wins for the chunk about to start. A single stuck chunk now fails in roughly 20–25 minutes (its own budget), not only after the entire file's budget is exhausted, and failure/cancellation mid-job cleans up every chunk's temp WAV/JSON.
+
+**Progress**: each chunk's own 0–100% is blended into one overall 0–100% proportional to its share of total duration, so the UI's progress bar advances smoothly across chunk boundaries rather than resetting.
+
+### Verified against the real 56.6-minute video (not a synthetic stand-in)
+Re-ran transcription on the exact video that originally failed, through the real app (`POST /api/transcribe` → real job → real `CaptionDocument`):
+
+- Split into 6 chunks (5×10min + 1×6.6min, matching `planAudioChunks`).
+- Each chunk: 44.3–73.6s wall time, 8.2–10.0x realtime.
+- **Total: ~6 minutes 50 seconds**, down from never finishing in 118 minutes.
+- Result: 9,840 real words, 1,749 segments, all 9,840 word ids unique (no duplicates), 0 negative-duration words, text reads coherently straight through every one of the 5 internal chunk boundaries (manually inspected), word timestamps span 0.21s–3388.32s of the 3393.0s video (the ~4.7s gap at the very end is trailing silence, confirmed separately via `ffmpeg silencedetect`). `segmentCaptions`'s output (1,749 segments) was perfectly ordered with 0 out-of-order segments — the segmentation system (explicitly untouched by this fix) absorbed the one minor timing artifact below without any visible effect.
+
+### Known limitation
+One of the 9,840 words showed a ~0.2s backward timestamp overlap with its neighbor, at exactly one of the 5 internal chunk boundaries (word N ending at 1800.96s, word N+1 starting at 1800.00s) — whisper's own reported end-time for a word whose audio was hard-cut by the chunk boundary extended slightly past the chunk's actual 600s of audio. This is an inherent, minor cost of cutting audio at arbitrary time marks rather than true silence points (the same class of imprecision whisper.cpp's own internal 30-second windows already accept, just at a much coarser, 20x-less-frequent grain here); it is not a lost, duplicated, or fabricated word, did not affect segmentation, and was not observed anywhere else across the 9,840-word real transcript. Not mitigated further (e.g. by snapping chunk boundaries to detected silence) to keep this the smallest appropriate fix; worth revisiting only if it proves visible in practice.
+
+### Files changed
+`config/whisper.ts` (`WHISPER_CHUNK_DURATION_SECONDS`), new `services/transcription/{wavSlicing,planAudioChunks,mergeChunkedTranscription}.ts`, `services/transcription/WhisperCppTranscriptionProvider.ts` (chunked orchestration). `runTranscriptionJob.ts`, `types/transcription.ts`, caption segmentation, and export were not touched.
+
+---
+
+## 29. Export Validation: Real Whisper Timestamp Inversion (2026-10-08)
+
+### Symptom
+`POST /api/export` returned 422 "A caption has invalid timing" for a video whose transcription had completed successfully (`[whisper.cpp] ... completed in 190486ms (5.3x realtime)`).
+
+### Exact failing check and condition
+`domain/export-engine/exportRequest.ts`'s `validateExportRequest`:
+```ts
+if (!isTime(raw.startTime) || !isTime(raw.endTime) || raw.endTime < raw.startTime) {
+  return fail("invalid_captions", "A caption has invalid timing.");
+}
+```
+The failing condition was `raw.endTime < raw.startTime` — a real `CaptionSegment` with a negative duration, found in the persisted `CaptionDocument` itself (not a client-side corruption): 4 of 543 segments, reproduced identically across two independent transcription runs of the same video (e.g. segment `startTime=358.16, endTime=354.18, text="Notice"`).
+
+### Root cause, traced to its source
+Real whisper.cpp output (captured, reproduced three times: two full job runs plus an isolated re-run of just that 600 s chunk) contains a token where `offsets.to < offsets.from`, immediately after a ~5 s silence:
+```
+"Notice" from=358160 to=353880
+"the"    from=358160 to=354300
+"structural" from=358160 to=355700
+"difference" from=358160 to=357100
+"between"    from=358160 to=358080
+"those"      from=358360 to=358740   ← recovers to normal timing
+```
+A run of consecutive tokens is anchored to the same (correct) segment-start `from`, each keeping a stale, too-early `to` — apparently left over from an earlier decode attempt that didn't get updated when whisper re-anchored the segment start after the pause. This is a variant of the same class of degenerate-timestamp whisper.cpp output already documented in §22/§25 (identical-timestamp runs around pauses), just inverted rather than merely zero-length.
+
+Nothing between parsing and export ever validated `end >= start` for a word, so this flowed straight through: `parseWhisperCppOutput` → `normalizeTranscription` (copies word timing as-is) → `segmentCaptions`. The DP segmentation engine isn't at fault — it correctly computed `segment.endTime` from its last word's `endTime` (354.18, via the existing bounded hold-time calculation, `maxHoldSeconds` unchanged), and the broken word timing *also* made the preceding gap check (`words[i+1].start - words[i].end`, here `358.16 - 353.88 = 4.28s`) look like a real pause bigger than `maxIntraGap` (1.5s), which is why these words were forced into tiny single-word captions instead of one normal sentence — both effects were downstream consequences of the same bad word timestamps, not independent bugs.
+
+**Verified NOT the cause**: Whisper parsing's token-merging logic (operates correctly on whatever offsets it's given), `normalizeTranscription` (a faithful passthrough by design), `segmentCaptions` (correct given its inputs), the client (didn't edit this document), export payload construction, or export validation (correctly rejected genuinely invalid data — exactly its job).
+
+### Fix — earliest correct layer: whisper.cpp output parsing
+`services/transcription/parseWhisperCppOutput.ts`'s `mergeTokensIntoWords` now ends with `sanitizeWordTiming`: any word whose `end < start` is collapsed to a zero-length word at its own `start` and marked `approximate: true` — never a fabricated plausible duration, consistent with CLAUDE.md "preserve word-level timestamps... mark the result as approximate rather than silently dropping it." This is whisper.cpp-specific knowledge, so it belongs in the provider-parsing layer (ARCHITECTURE.md §6's boundary), not in `normalizeTranscription` (provider-agnostic) and certainly not in the export validator, which continues to reject any `CaptionSegment` that is still malformed after normalization — its strictness is unchanged.
+
+### Verified against the real captured data
+Re-ran the exact raw whisper.cpp JSON that produced the original failure through the fixed pipeline: 0 of 339 segments have `endTime < startTime` (previously 4), and `validateExportRequest` now accepts the resulting document. As a side effect of the same fix, "Notice the structural difference" / "between those two approaches." are now segmented as two normal multi-word captions instead of four single-word ones — confirming the gap-detection side effect above.
+
+### Known residual limitation
+One corrected word landed as the *last* word of its segment, so that segment's own `endTime` also collapsed to equal its `startTime` (a zero-duration caption) — valid per the export validator (`end < start` is false when equal) and per `segmentCaptions` (unchanged), but a zero-duration segment is never "active" for any playback time (`findActiveSegment`'s `t < endTime` never holds), so that one caption would not actually display during preview or be burned into the export. This is a pre-existing characteristic of a zero-duration segment in general (not introduced by this fix — the alternative, before this fix, was an *invalid* segment that failed export entirely) and was left alone as out of scope: the task was fixing the export-blocking invariant violation, not changing `segmentCaptions`'s hold-time behavior. Worth a follow-up if a zero-duration caption is ever observed to matter in practice.
+
+### Files changed
+`services/transcription/parseWhisperCppOutput.ts` (`sanitizeWordTiming`), `services/transcription/__tests__/parseWhisperCppOutput.test.ts` (regression test built from the real captured token data). `normalizeTranscription.ts`, `segmentCaptions.ts`, the export validator, the preview/export architecture, and Whisper configuration were not touched.

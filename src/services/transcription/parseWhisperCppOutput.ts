@@ -72,7 +72,32 @@ function mergeTokensIntoWords(tokens: WhisperCppToken[]): TranscriptionWord[] {
       words.push({ text: tokenText, start, end });
     }
   }
-  return words;
+  return sanitizeWordTiming(words);
+}
+
+/**
+ * Real whisper.cpp output (captured 2026-10-08, a ~17-minute real talk,
+ * reproduced identically across two separate transcription runs of the
+ * same video) can report a token's `to` offset *earlier* than its `from`
+ * offset, right after a pause: a run of consecutive tokens all anchored
+ * to the same (correct) segment-start `from`, while each keeps a stale,
+ * too-early `to` left over from an earlier decode attempt — e.g. "Notice"
+ * at from=358.16/to=353.88, immediately following a ~5s silence. Nothing
+ * downstream (`normalizeTranscription`, `segmentCaptions`) expects
+ * `end < start`; left as-is it produced a `CaptionSegment` with a
+ * negative duration, which the export validator (correctly) rejected.
+ *
+ * Never fabricate a plausible duration for these — collapse to a
+ * zero-length word at its own (trustworthy) start and mark it
+ * `approximate`, the same treatment already given to other
+ * degenerate-timestamp whisper.cpp output elsewhere in this pipeline
+ * (CLAUDE.md "preserve word-level timestamps... mark the result as
+ * approximate rather than silently dropping it"). See ARCHITECTURE.md's
+ * Export Validation notes for the full trace and the regression test
+ * built from this exact captured pattern.
+ */
+function sanitizeWordTiming(words: TranscriptionWord[]): TranscriptionWord[] {
+  return words.map((word) => (word.end < word.start ? { ...word, end: word.start, approximate: true } : word));
 }
 
 export function parseWhisperCppOutput(raw: WhisperCppOutput): TranscriptionResult {

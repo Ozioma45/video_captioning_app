@@ -5,6 +5,7 @@ import { createReadStream as createNodeReadStream, createWriteStream as createNo
 import path from "node:path";
 
 import type { StorageProvider } from "./StorageService";
+import { nodeReadableToWebStream } from "./nodeStreamToWebStream";
 
 const DEFAULT_STORAGE_ROOT = path.resolve(process.cwd(), "storage");
 
@@ -51,12 +52,20 @@ export class LocalFilesystemStorage implements StorageProvider {
     return readFile(this.getAbsolutePath(key));
   }
 
+  /**
+   * Reads a byte range (or the whole file) as a Web `ReadableStream`. Uses
+   * `nodeReadableToWebStream` rather than a bare `Readable.toWeb()` — see
+   * that module's doc comment for the "Invalid state: Controller is
+   * already closed" crash this avoids when a consumer (typically a
+   * `<video>` element seeking, which aborts its in-flight Range request)
+   * disconnects mid-stream.
+   */
   async createReadStream(key: string, range?: { start: number; end: number }): Promise<ReadableStream> {
     const absolutePath = this.getAbsolutePath(key);
     const nodeStream = range
       ? createNodeReadStream(absolutePath, { start: range.start, end: range.end })
       : createNodeReadStream(absolutePath);
-    return Readable.toWeb(nodeStream) as ReadableStream;
+    return nodeReadableToWebStream(nodeStream);
   }
 
   async delete(key: string): Promise<void> {

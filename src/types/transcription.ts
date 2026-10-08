@@ -20,6 +20,22 @@ export interface TranscriptionInput {
   /** BCP-47 language hint, if known. Omit to let the provider auto-detect. */
   language?: string;
   /**
+   * The audio's real duration in seconds, if known — used to compute a
+   * duration-aware timeout (see `config/whisper.ts`'s
+   * `computeWhisperTimeoutMs`) rather than one fixed ceiling for every
+   * video length. Omit only when genuinely unknown; the timeout then
+   * falls back to its configured minimum.
+   */
+  durationSeconds?: number;
+  /** For log correlation only (never used in a user-facing message, never a caption/transcript). */
+  jobId?: string;
+  /**
+   * Real progress (0-100), when the provider can report it — whisper.cpp
+   * emits its own `-pp` progress callbacks. Never fabricated; omitted
+   * entirely by a provider that has no real signal (PROJECT.md §38).
+   */
+  onProgress?: (percent: number) => void;
+  /**
    * Called once the provider has a real, killable process running, so a
    * caller can keep the handle for a future cancellation feature without
    * this interface needing to change again (Phase 3 brief §14: the

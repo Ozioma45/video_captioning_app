@@ -54,3 +54,27 @@ export function classifyWhisperExecError(error: unknown): WhisperUnavailableErro
   }
   return new TranscriptionProcessError(error);
 }
+
+/**
+ * whisper.cpp was killed because it exceeded its effective timeout — a
+ * distinct case from a non-zero exit (`TranscriptionProcessError`) or a
+ * failed spawn (`WhisperUnavailableError`). Carries the numbers needed to
+ * explain what happened without dumping a stack trace at the user.
+ */
+export class WhisperTimeoutError extends Error {
+  constructor(
+    readonly elapsedMs: number,
+    readonly timeoutMs: number,
+  ) {
+    super(`whisper.cpp transcription timed out after ${Math.round(elapsedMs / 1000)}s (limit ${Math.round(timeoutMs / 1000)}s)`);
+    this.name = "WhisperTimeoutError";
+  }
+}
+
+/** The transcription was cancelled (SIGTERM via the process handle) rather than timing out or failing on its own. */
+export class WhisperCancelledError extends Error {
+  constructor() {
+    super("whisper.cpp transcription was cancelled");
+    this.name = "WhisperCancelledError";
+  }
+}
